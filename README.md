@@ -38,11 +38,15 @@ async def root():
 Copie eso en un archivo `main.py`.
 Ejecute el servidor en vivo:
 ```
-uvicorn main:app --reload
+uvicorn main:app --reloadEl comando uvicorn main:app se refiere a:
+
+main: el archivo main.py (el "módulo" de Python).
+app: el objeto creado dentro de main.py con la línea app = FastAPI().
+--reload: hace que el servidor se reinicie después de cambios en el código. Uso exclusivo para desarrollo.
 ```
 
 ### Nota
-El comando uvicorn main:app se refiere a:
+El comando `uvicorn main:app --reload` se refiere a:
 
 - main: el archivo main.py (el "módulo" de Python).
 - app: el objeto creado dentro de main.py con la línea app = FastAPI().
