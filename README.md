@@ -79,3 +79,37 @@ FastAPI genera un "esquema" con toda su API utilizando el estándar OpenAPI para
 
 ### **Esquema**
 Un "esquema" es una definición o descripción de algo. No el código que lo implementa, sino solo una descripción abstracta.
+
+### **Esquema API**
+En este caso, OpenAPI es una especificación que dicta cómo definir un esquema de su API.
+Esta definición de esquema incluye sus rutas de API, los posibles parámetros que toman, etc.
+
+### **Esquema de datos**
+El término "esquema" también puede referirse a la forma de algunos datos, como un contenido JSON.
+En ese caso, significaría los atributos JSON y los tipos de datos que tienen, etc.
+
+### **Esquema OpenAPI y JSON**
+OpenAPI define un esquema de API para su API. Y ese esquema incluye definiciones (o "esquemas") de los datos enviados y recibidos por su API usando JSON Schema, el estándar para esquemas de datos JSON.
+
+### **Compruebe el archivo openapi.json**
+Si tiene curiosidad acerca de cómo se ve el esquema de OpenAPI sin procesar, FastAPI genera automáticamente un JSON (esquema) con las descripciones de todas sus API.
+Puede verlo directamente en: http://127.0.0.1:8000/openapi.json.
+Mostrará un JSON que comienza con algo como:
+```
+{
+    "openapi": "3.0.2",
+    "info": {
+        "title": "FastAPI",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/items/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+...
+
+```
