@@ -51,3 +51,31 @@ El comando `uvicorn main:app --reload` se refiere a:
 - main: el archivo main.py (el "módulo" de Python).
 - app: el objeto creado dentro de main.py con la línea app = FastAPI().
 - --reload: hace que el servidor se reinicie después de cambios en el código. Uso exclusivo para desarrollo.
+
+En la salida, hay una línea con algo como:
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
+
+Esa línea muestra la URL donde se sirve su aplicación, en su máquina local.
+
+## Revisalo
+Abra su navegador en http://127.0.0.1:8000
+Verá la respuesta JSON como:
+```
+{"message": "Hello World"}
+```
+
+## Documentos de API interactivos
+Ahora ve a http://127.0.0.1:8000/docs
+Verá la documentación de la API interactiva automática (proporcionada por la interfaz de usuario de Swagger)
+
+## Documentos API alternativos
+Y ahora, vaya a http://127.0.0.1:8000/redoc
+Verá la documentación automática alternativa (proporcionada por ReDoc)
+
+## OpenAPI
+FastAPI genera un "esquema" con toda su API utilizando el estándar OpenAPI para definir las API.
+
+### **Esquema**
+Un "esquema" es una definición o descripción de algo. No el código que lo implementa, sino solo una descripción abstracta.
