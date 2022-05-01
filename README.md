@@ -11,3 +11,27 @@ Para ejecutar cualquiera de los ejemplos, copie el código en un archivo main.py
 ```
 uvicorn main:app --reload
 ```
+Se recomienda **ENCARECIDAMENTE** que escriba o copie el código, lo edite y lo ejecute localmente.
+
+Usarlo en tu editor es lo que realmente te muestra los beneficios de FastAPI, ver el poco código que tienes que escribir, todas las verificaciones de tipo, el autocompletado, etc.
+
+## Instalar FastAPI
+El primer paso es instalar FastAPI.
+Para el tutorial, es posible que desee instalarlo con todas las dependencias y características opcionales:
+```
+pip install "fastapi[all]"
+```
+...que también incluye uvicorn, que puedes usar como el servidor que ejecuta tu código.
+
+## Primeros pasos
+El archivo FastAPI más simple podría verse así:
+```
+from fastapi import FastAPI
+
+app = FastAPI()
+
+
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+```
