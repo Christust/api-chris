@@ -141,7 +141,7 @@ Entonces, en una URL como:
 ```
 https://example.com/items/foo
 ```
-...the path would be:
+...la ruta seria:
 ```
 /items/foo
 ```
