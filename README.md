@@ -110,6 +110,12 @@ Mostrará un JSON que comienza con algo como:
                         "description": "Successful Response",
                         "content": {
                             "application/json": {
-...
-
+.
+.
+.
 ```
+
+### **Para qué sirve OpenAPI**
+El esquema OpenAPI es lo que impulsa los dos sistemas de documentación interactivos incluidos.
+Y hay decenas de alternativas, todas basadas en OpenAPI. Puede agregar fácilmente cualquiera de esas alternativas a su aplicación creada con FastAPI.
+También puede usarlo para generar código automáticamente, para clientes que se comunican con su API. Por ejemplo, aplicaciones frontend, móviles o IoT.
