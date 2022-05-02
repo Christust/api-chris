@@ -220,3 +220,17 @@ Puede declarar la ruta "parámetros" o "variables" con la misma sintaxis utiliza
 async def read_item(item_id):
     return {"item_id": item_id}
 ```
+El valor del parámetro de ruta item_id se pasará a su función como el argumento item_id.
+Entonces, si ejecuta este ejemplo y va a http://127.0.0.1:8000/items/foo, verá una respuesta de:
+```
+{"item_id":"foo"}
+```
+
+# Parámetros de ruta con tipos
+Puede declarar el tipo de un parámetro de ruta en la función, utilizando anotaciones de tipo estándar de Python:
+```
+@app.get("/items/{item_id}")
+async def read_item(item_id: int):
+    return {"item_id": item_id}
+```
+En este caso, item_id se declara como un int.
