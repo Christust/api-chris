@@ -23,7 +23,7 @@ pip install "fastapi[all]"
 ```
 ...que también incluye uvicorn, que puedes usar como el servidor que ejecuta tu código.
 
-## Primeros pasos
+# Primeros pasos
 El archivo FastAPI más simple podría verse así:
 ```
 from fastapi import FastAPI
@@ -119,3 +119,104 @@ Mostrará un JSON que comienza con algo como:
 El esquema OpenAPI es lo que impulsa los dos sistemas de documentación interactivos incluidos.
 Y hay decenas de alternativas, todas basadas en OpenAPI. Puede agregar fácilmente cualquiera de esas alternativas a su aplicación creada con FastAPI.
 También puede usarlo para generar código automáticamente, para clientes que se comunican con su API. Por ejemplo, aplicaciones frontend, móviles o IoT.
+
+## Resumen, paso a paso
+### Paso 1: Importar FastAPI
+```
+from fastapi import FastAPI
+```
+FastAPI es una clase de Python que proporciona toda la funcionalidad para su API.
+
+### Paso 2: Crea una "instancia" de FastAPI
+```
+app = FastAPI()
+```
+Aquí, la variable de la aplicación será una "instancia" de la clase FastAPI.
+Este será el principal punto de interacción para crear toda su API.
+
+### Paso 3: Crear una operación de ruta
+#### **Ruta**
+"Ruta" aquí se refiere a la última parte de la URL a partir de la primera /
+Entonces, en una URL como:
+```
+https://example.com/items/foo
+```
+...the path would be:
+```
+/items/foo
+```
+Al crear una API, la "ruta" es la forma principal de separar "inquietudes" y "recursos".
+
+#### **Operación**
+"Operación" aquí se refiere a uno de los "métodos" HTTP.
+Uno de:
+- POST
+- GET
+- PUT
+- DELETE
+
+... Y los más exóticos:
+- OPTIONS
+- HEAD
+- PATCH
+- TRACE
+
+En el protocolo HTTP, puede comunicarse con cada ruta usando uno (o más) de estos "métodos".
+Al crear API, normalmente utiliza estos métodos HTTP específicos para realizar una acción específica.
+Normalmente usas:
+- POST: para crear datos.
+- GET: para leer datos.
+- PUT: para actualizar datos.
+- DELETE: para borrar datos.
+
+OpenAPI, cada uno de los métodos HTTP se denomina "operación".
+También las llamaremos "operaciones".
+
+#### **Definir un decorador de operación de ruta**
+```
+@app.get("/")
+```
+`@app.get("/")` le dice a FastAPI que la función justo debajo está a cargo de manejar las solicitudes que van a:
+- La ruta /
+- Utilizando una operación de GET
+
+También puede utilizar las otras operaciones:
+- @app.post()
+- @app.put()
+- @app.delete()
+
+Y las más exóticas:
+- @app.options()
+- @app.head()
+- @app.patch()
+- @app.trace()
+
+### Paso 4: Definir la función de operación de ruta
+Esta es nuestra "función de operación de ruta":
+
+- Ruta: es /.
+- Operación: es GET.
+- Función: es la función debajo del "decorador" (debajo de @app.get("/")).
+
+```
+async def root():
+```
+Esta es una función de Python.
+FastAPI lo llamará cada vez que reciba una solicitud a la URL "/" mediante una operación GET.
+En este caso, es una función asíncrona.
+
+### Paso 5: Devolver el contenido
+```
+return {"message": "Hello World"}
+```
+Puede devolver un diccionario, una lista, valores singulares como str, int, etc.
+También puede devolver modelos de Pydantic (verá más sobre eso más adelante).
+Hay muchos otros objetos y modelos que se convertirán automáticamente a JSON (incluidos ORM, etc.). Intente usar sus favoritos, es muy probable que ya sean compatibles.
+
+# Parámetros de ruta
+Puede declarar la ruta "parámetros" o "variables" con la misma sintaxis utilizada por las cadenas de formato de Python:
+```
+@app.get("/items/{item_id}")
+async def read_item(item_id):
+    return {"item_id": item_id}
+```
