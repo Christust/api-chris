@@ -220,7 +220,6 @@ Puede declarar la ruta "parámetros" o "variables" con la misma sintaxis utiliza
 async def read_item(item_id):
     return {"item_id": item_id}
 ```
-<<<<<<< HEAD
 El valor del parámetro de ruta item_id se pasará a su función como el argumento item_id.
 Entonces, si ejecuta este ejemplo y va a http://127.0.0.1:8000/items/foo, verá una respuesta de:
 ```
@@ -235,5 +234,3 @@ async def read_item(item_id: int):
     return {"item_id": item_id}
 ```
 En este caso, item_id se declara como un int.
-=======
->>>>>>> 3a44777f098465679249ab2b48d905407e52502b
