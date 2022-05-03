@@ -300,5 +300,121 @@ async def read_user_item(item_id: str, needy: str, no_needy: str = "no needy val
     return {"item_id": item_id, "needy": needy, "no_needy":no_needy}
 ```
 
+# Cuerpos de solicitud
+Cuando necesita enviar datos desde un cliente (digamos, un navegador) a su API, los envía como un cuerpo de solicitud.
+Un cuerpo de solicitud son datos enviados por el cliente a su API. Un cuerpo de respuesta son los datos que tu API envía al cliente.
+Su API casi siempre tiene que enviar un cuerpo de respuesta. Pero los clientes no necesariamente necesitan enviar cuerpos de solicitud todo el tiempo.
+Para declarar un cuerpo de solicitud, utiliza modelos Pydantic con todo su poder y beneficios.
+
+### Nota
+Para enviar datos, debe usar uno de: POST (el más común), PUT, DELETE o PATCH.
+El envío de un cuerpo con una solicitud GET tiene un comportamiento indefinido en las especificaciones, sin embargo, es compatible con FastAPI, solo para casos de uso muy complejo/extremo.
+
+## Importar modelo base de Pydantic
+Primero, necesita importar BaseModel desde pydantic:
+```
+from pydantic import BaseModel
+```
+
+## Crea tu modelo de datos
+Luego, declara su modelo de datos como una clase que hereda de BaseModel.
+Use tipos estándar de Python para todos los atributos:
+```
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+```
+
+Al igual que cuando se declaran parámetros de consulta, cuando un atributo del modelo tiene un valor predeterminado, no es obligatorio. De lo contrario, es obligatorio. Use None para que sea simplemente opcional.
+Por ejemplo, este modelo anterior declara un "objeto" JSON (o dictado de Python) como:
+```
+{
+    "name": "Foo",
+    "description": "An optional description",
+    "price": 45.2,
+    "tax": 3.5
+}
+```
+
+...como la descripción y el impuesto son opcionales (con un valor predeterminado de None), este "objeto" JSON también sería válido.
+```
+{
+    "name": "Foo",
+    "price": 45.2,
+}
+```
+
+## Declararlo como un parámetro.
+Para agregarlo a su operación de ruta, declárelo de la misma manera que declaró la ruta y los parámetros de consulta:
+```
+@app.post("/items/")
+async def create_item(item: Item):
+    return item
+```
+...y declara su tipo como el modelo que creaste, Item.
+
+# Parámetros de consulta y validaciones de cadenas
+FastAPI le permite declarar información adicional y validación para sus parámetros.
+Tomemos esta aplicación como ejemplo:
+```
+from typing import Optional
+
+from fastapi import FastAPI
+
+app = FastAPI()
 
 
+@app.get("/items/")
+async def read_items(q: Optional[str] = None):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+El parámetro de consulta q es de tipo Opcional[str] (o str | None en Python 3.10), eso significa que es de tipo str pero también podría ser None y, de hecho, el valor predeterminado es None, por lo que FastAPI sabrá que no es necesario.
+
+## Validación adicional
+Vamos a hacer cumplir que aunque q es opcional, siempre que se proporcione, su longitud no supere los 50 caracteres.
+
+### Importa Query
+Para lograr eso, primero importa Query desde fastapi:
+```
+from typing import Optional
+
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+
+@app.get("/items/")
+async def read_items(q: Optional[str] = Query(None, max_length=50)):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Usar Query como valor predeterminado
+Y ahora utilícelo como el valor predeterminado de su parámetro, estableciendo el parámetro max_length en 50:
+```
+async def read_items(q: Optional[str] = Query(None, max_length=50)):
+```
+
+Como tenemos que reemplazar el valor predeterminado None con Query(None), el primer parámetro de Query tiene el mismo propósito de definir ese valor predeterminado.
+Asi que:
+```
+q: Optional[str] = Query(None)
+```
+
+...hace que el parámetro sea opcional, lo mismo que:
+```
+q: Optional[str] = None
+```
+Luego, podemos pasar más parámetros a Query. En este caso, el parámetro max_length que se aplica a las cadenas:
+```
+q: str = Query(None, max_length=50)
+```
+
+Esto validará los datos, mostrará un error claro cuando los datos no sean válidos y documentará el parámetro en la operación de ruta de esquema de OpenAPI.
