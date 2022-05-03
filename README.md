@@ -226,7 +226,7 @@ Entonces, si ejecuta este ejemplo y va a http://127.0.0.1:8000/items/foo, verá 
 {"item_id":"foo"}
 ```
 
-# Parámetros de ruta con tipos
+## Parámetros de ruta con tipos
 Puede declarar el tipo de un parámetro de ruta en la función, utilizando anotaciones de tipo estándar de Python:
 ```
 @app.get("/items/{item_id}")
@@ -234,3 +234,71 @@ async def read_item(item_id: int):
     return {"item_id": item_id}
 ```
 En este caso, item_id se declara como un int.
+
+# Parámetros de consulta
+Cuando declara otros parámetros de función que no forman parte de los parámetros de ruta, se interpretan automáticamente como parámetros de "consulta".
+```
+@app.get("/items/")
+async def read_item(skip: int = 0, limit: int = 10):
+    return fake_items_db[skip : skip + limit]
+```
+La consulta es el conjunto de pares clave-valor que van después del ? en una URL, separados por &.
+Por ejemplo, en la URL:
+http://127.0.0.1:8000/items/?skip=0&limit=10
+...los parámetros de consulta son:
+- skip: con un valor de 0
+- límite: con un valor de 10
+
+Como son parte de la URL, son cadenas "naturalmente".
+Pero cuando los declara con tipos de Python (en el ejemplo anterior, como int), se convierten a ese tipo y se validan contra él.
+
+## Valores predeterminados
+Como los parámetros de consulta no son una parte fija de una ruta, pueden ser opcionales y pueden tener valores predeterminados.
+En el ejemplo anterior, tienen valores predeterminados de skip=0 y limit=10.
+Entonces, yendo a la URL:
+```
+http://127.0.0.1:8000/items/
+```
+Sería lo mismo que ir a:
+```
+http://127.0.0.1:8000/items/?skip=0&limit=10
+
+```
+
+## Parámetros opcionales
+Del mismo modo puedes declarar parámetros de query opcionales definiendo el valor por defecto como None:
+```
+from typing import Optional
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+
+@app.get("/items/{item_id}")
+async def read_item(item_id: str, q: Optional[str] = None):
+    if q:
+        return {"item_id": item_id, "q": q}
+    return {"item_id": item_id}
+```
+
+## Parámetros de query requeridos
+Cuando declaras un valor por defecto para los parámetros que no son de path (por ahora solo hemos visto parámetros de query), entonces no es requerido.
+Si no quieres añadir un valor específico sino solo hacerlo opcional, pon el valor por defecto como None.
+Pero cuando quieres hacer que un parámetro de query sea requerido, puedes simplemente no declararle un valor por defecto:
+```
+from fastapi import FastAPI
+from typing import Optional
+
+app = FastAPI()
+
+
+@app.get("/items/{item_id}")
+async def read_user_item(item_id: str, needy: str, no_needy: str = "no needy value",optional: Optional[str] = None):
+    if optional:
+        return {"item_id": item_id, "needy": needy, "no_needy":no_needy, "optional":optional}
+    return {"item_id": item_id, "needy": needy, "no_needy":no_needy}
+```
+
+
+
