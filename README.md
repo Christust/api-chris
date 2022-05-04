@@ -418,3 +418,40 @@ q: str = Query(None, max_length=50)
 ```
 
 Esto validará los datos, mostrará un error claro cuando los datos no sean válidos y documentará el parámetro en la operación de ruta de esquema de OpenAPI.
+
+## Que sea requerida
+Cuando no necesitamos declarar más validaciones o metadatos, podemos hacer que el parámetro de consulta q sea requerido simplemente no declarando un valor predeterminado, como:
+```
+q: str
+```
+en vez de:
+```
+q: Optional[str] = None
+```
+Pero ahora lo estamos declarando con Query, por ejemplo como:
+```
+q: Optional[str] = Query(None, min_length=3)
+```
+Entonces, cuando necesite declarar un valor como requerido mientras usa Query, puede usar ... como el primer argumento:
+```
+@app.get("/items/")
+async def read_items(q: str = Query(..., min_length=3)):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Lista de parámetros de consulta/valores múltiples
+Cuando define un parámetro de consulta explícitamente con Query, también puede declararlo para recibir una lista de valores, o dicho de otra manera, para recibir múltiples valores.
+Por ejemplo, para declarar un parámetro de consulta q que puede aparecer varias veces en la URL, puede escribir:
+```
+@app.get("/items/")
+async def read_items(q: Optional[List[str]] = Query(None)):
+    query_items = {"q": q}
+    return query_items
+```
+Luego, con una URL como:
+```
+http://localhost:8000/items/?q=foo&q=bar
+```

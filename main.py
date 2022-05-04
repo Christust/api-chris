@@ -39,7 +39,7 @@ async def items(item:Item):
     return item_dict
 
 @app.put("/items/{item_id}")
-async def items(item_id:int, item:Item, q:Optional[str]=Query(None, min_length=2)):
+async def items(item_id:int, item:Item, needy: str = Query(..., max_length=5 ), q:Optional[str]=Query(None, min_length=2)):
     item_dict = {"item_id":item_id,**item.dict()}
     if q:
         item_dict.update({"optional":q})
