@@ -455,3 +455,11 @@ Luego, con una URL como:
 ```
 http://localhost:8000/items/?q=foo&q=bar
 ```
+
+# Parámetros de ruta y validaciones numéricas
+De la misma manera que puede declarar más validaciones y metadatos para parámetros de consulta con Query, puede declarar el mismo tipo de validaciones y metadatos para parámetros de ruta con Path.
+
+## Importar Path
+```
+from fastapi import FastAPI, Path, Query
+```
