@@ -1,7 +1,10 @@
-from optparse import Option
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Depends
 from typing import Optional
 from pydantic import BaseModel
+from fastapi.security import OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 app = FastAPI()
 
@@ -14,8 +17,8 @@ class Item(BaseModel):
     tax: Optional[float] = None
 
 @app.get("/")
-async def root():
-    return {"message": "Hola mundo"}
+async def root(token: str = Depends(oauth2_scheme)):
+    return {"message": "Hola mundo", "token": token}
 
 @app.get("/item/{item_id}")
 async def foo(item_id: int):
