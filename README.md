@@ -1,48 +1,49 @@
-# FastAPI
-## Tutorial - Guía del usuario - Introducción
-Este tutorial le muestra cómo usar FastAPI con la mayoría de sus funciones, paso a paso.
-Cada sección se basa gradualmente en las anteriores, pero está estructurada en temas separados, de modo que puede ir directamente a cualquier tema específico para resolver sus necesidades específicas de API.
-También está diseñado para funcionar como una referencia futura.
-Para que pueda volver y ver exactamente lo que necesita.
+# Tutorial - Guía del usuario - Introducción
+Este tutorial te muestra cómo usar FastAPI con la mayoría de sus características paso a paso.
+Cada sección se basa gradualmente en las anteriores, pero está estructurada en temas separados, así puedes ir directamente a cualquier tema en concreto para resolver tus necesidades específicas sobre la API.
+Funciona también como una referencia futura, para que puedas volver y ver exactamente lo que necesitas.
 
-## Ejecutar el código
+## Ejecuta el código
 Todos los bloques de código se pueden copiar y usar directamente (en realidad son archivos Python probados).
-Para ejecutar cualquiera de los ejemplos, copie el código en un archivo main.py e inicie uvicorn con:
+Para ejecutar cualquiera de los ejemplos, copia el código en un archivo llamado main.py, y ejecuta uvicorn de la siguiente manera en tu terminal:
 ```
 uvicorn main:app --reload
 ```
 Se recomienda **ENCARECIDAMENTE** que escriba o copie el código, lo edite y lo ejecute localmente.
+Usarlo en tu editor de código es lo que realmente te muestra los beneficios de FastAPI, al ver la poca cantidad de código que tienes que escribir, todas las verificaciones de tipo, autocompletado, etc.
 
-Usarlo en tu editor es lo que realmente te muestra los beneficios de FastAPI, ver el poco código que tienes que escribir, todas las verificaciones de tipo, el autocompletado, etc.
-
-## Instalar FastAPI
+## Instala FastAPI
 El primer paso es instalar FastAPI.
-Para el tutorial, es posible que desee instalarlo con todas las dependencias y características opcionales:
+Para el tutorial, es posible que quieras instalarlo con todas las dependencias y características opcionales:
 ```
 pip install "fastapi[all]"
 ```
-...que también incluye uvicorn, que puedes usar como el servidor que ejecuta tu código.
+...eso también incluye uvicorn que puedes usar como el servidor que ejecuta tu código.
+
+## Guía Avanzada de Usuario
+También hay una Guía Avanzada de Usuario que puedes leer luego de este Tutorial - Guía de Usuario.
+La Guía Avanzada de Usuario, se basa en este tutorial, utiliza los mismos conceptos y enseña algunas características adicionales.
+Pero primero deberías leer el Tutorial - Guía de Usuario (lo que estas leyendo ahora mismo).
+La guía esa diseñada para que puedas crear una aplicación completa con solo el Tutorial - Guía de Usuario, y luego extenderlo de diferentes maneras, según tus necesidades, utilizando algunas de las ideas adicionales de la Guía Avanzada de Usuario.
 
 # Primeros pasos
-El archivo FastAPI más simple podría verse así:
+Un archivo muy simple de FastAPI podría verse así:
+
 ```
 from fastapi import FastAPI
 
 app = FastAPI()
 
-
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
 ```
+
 Copie eso en un archivo `main.py`.
 Ejecute el servidor en vivo:
-```
-uvicorn main:app --reloadEl comando uvicorn main:app se refiere a:
 
-main: el archivo main.py (el "módulo" de Python).
-app: el objeto creado dentro de main.py con la línea app = FastAPI().
---reload: hace que el servidor se reinicie después de cambios en el código. Uso exclusivo para desarrollo.
+```
+uvicorn main:app --reload
 ```
 
 ### Nota
@@ -53,6 +54,7 @@ El comando `uvicorn main:app --reload` se refiere a:
 - --reload: hace que el servidor se reinicie después de cambios en el código. Uso exclusivo para desarrollo.
 
 En la salida, hay una línea con algo como:
+
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ```
@@ -60,18 +62,19 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 Esa línea muestra la URL donde se sirve su aplicación, en su máquina local.
 
 ## Revisalo
-Abra su navegador en http://127.0.0.1:8000
+Abra su navegador en `http://127.0.0.1:8000`
 Verá la respuesta JSON como:
+
 ```
 {"message": "Hello World"}
 ```
 
 ## Documentos de API interactivos
-Ahora ve a http://127.0.0.1:8000/docs
+Ahora ve a `http://127.0.0.1:8000/docs`
 Verá la documentación de la API interactiva automática (proporcionada por la interfaz de usuario de Swagger)
 
 ## Documentos API alternativos
-Y ahora, vaya a http://127.0.0.1:8000/redoc
+Y ahora, vaya a `http://127.0.0.1:8000/redoc`
 Verá la documentación automática alternativa (proporcionada por ReDoc)
 
 ## OpenAPI
@@ -93,7 +96,7 @@ OpenAPI define un esquema de API para su API. Y ese esquema incluye definiciones
 
 ### **Compruebe el archivo openapi.json**
 Si tiene curiosidad acerca de cómo se ve el esquema de OpenAPI sin procesar, FastAPI genera automáticamente un JSON (esquema) con las descripciones de todas sus API.
-Puede verlo directamente en: http://127.0.0.1:8000/openapi.json.
+Puede verlo directamente en: `http://127.0.0.1:8000/openapi.json`.
 Mostrará un JSON que comienza con algo como:
 ```
 {
@@ -213,67 +216,308 @@ Puede devolver un diccionario, una lista, valores singulares como str, int, etc.
 También puede devolver modelos de Pydantic (verá más sobre eso más adelante).
 Hay muchos otros objetos y modelos que se convertirán automáticamente a JSON (incluidos ORM, etc.). Intente usar sus favoritos, es muy probable que ya sean compatibles.
 
-# Parámetros de ruta
-Puede declarar la ruta "parámetros" o "variables" con la misma sintaxis utilizada por las cadenas de formato de Python:
+# Parámetros de path
+Puedes declarar los "parámetros" o "variables" con la misma sintaxis que usan los format strings de Python:
 ```
+from fastapi import FastAPI
+app = FastAPI()
+
 @app.get("/items/{item_id}")
 async def read_item(item_id):
     return {"item_id": item_id}
 ```
-El valor del parámetro de ruta item_id se pasará a su función como el argumento item_id.
-Entonces, si ejecuta este ejemplo y va a http://127.0.0.1:8000/items/foo, verá una respuesta de:
+
+El valor del parámetro de path item_id será pasado a tu función como el argumento item_id.
+Entonces, si corres este ejemplo y vas a `http://127.0.0.1:8000/items/foo`, verás una respuesta de:
 ```
 {"item_id":"foo"}
 ```
 
-## Parámetros de ruta con tipos
-Puede declarar el tipo de un parámetro de ruta en la función, utilizando anotaciones de tipo estándar de Python:
+## Parámetros de path con tipos
+Puedes declarar el tipo de un parámetro de path en la función usando las anotaciones de tipos estándar de Python:
 ```
+from fastapi import FastAPI
+app = FastAPI()
+
 @app.get("/items/{item_id}")
 async def read_item(item_id: int):
     return {"item_id": item_id}
 ```
-En este caso, item_id se declara como un int.
+En este caso, item_id es declarado como un int.
 
-# Parámetros de consulta
-Cuando declara otros parámetros de función que no forman parte de los parámetros de ruta, se interpretan automáticamente como parámetros de "consulta".
+## Conversión de datos
+Si corres este ejemplo y abres tu navegador en `http://127.0.0.1:8000/items/3` verás una respuesta de:
 ```
+{"item_id":3}
+```
+
+## Validación de datos
+Pero si abres tu navegador en `http://127.0.0.1:8000/items/foo` verás este lindo error de HTTP:
+```
+{
+    "detail": [
+        {
+            "loc": [
+                "path",
+                "item_id"
+            ],
+            "msg": "value is not a valid integer",
+            "type": "type_error.integer"
+        }
+    ]
+}
+```
+debido a que el parámetro de path item_id tenía el valor "foo", que no es un int.
+
+El mismo error aparecería si pasaras un float en vez de un int como en: `http://127.0.0.1:8000/items/4.2`
+
+## Pydantic
+Toda la validación de datos es realizada tras bastidores por Pydantic, así que obtienes todos sus beneficios. Así sabes que estás en buenas manos.
+Puedes usar las mismas declaraciones de tipos con str, float, bool y otros tipos de datos más complejos.
+Exploraremos varios de estos tipos en los próximos capítulos del tutorial.
+
+## El orden importa
+Cuando creas operaciones de path puedes encontrarte con situaciones en las que tengas un path fijo.
+Digamos algo como /users/me que sea para obtener datos del usuario actual.
+... y luego puedes tener el path /users/{user_id} para obtener los datos sobre un usuario específico asociados a un ID de usuario.
+Porque las operaciones de path son evaluadas en orden, tienes que asegurarte de que el path para /users/me sea declarado antes que el path para /users/{user_id}:
+```
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/users/me")
+async def read_user_me():
+    return {"user_id": "the current user"}
+
+@app.get("/users/{user_id}")
+async def read_user(user_id: str):
+    return {"user_id": user_id}
+```
+
+De otra manera el path para /users/{user_id} coincidiría también con /users/me "pensando" que está recibiendo el parámetro user_id con el valor "me".
+
+## Valores predefinidos
+Si tienes una operación de path que recibe un parámetro de path pero quieres que los valores posibles del parámetro de path sean predefinidos puedes usar un Enum estándar de Python.
+
+### Crea una clase `Enum`
+Importa Enum y crea una sub-clase que herede desde str y desde Enum.
+Al heredar desde str la documentación de la API podrá saber que los valores deben ser de tipo string y podrá mostrarlos correctamente.
+Luego crea atributos de clase con valores fijos, que serán los valores disponibles válidos:
+```
+from enum import Enum
+from fastapi import FastAPI
+
+class ModelName(str, Enum):
+    alexnet = "alexnet"
+    resnet = "resnet"
+    lenet = "lenet"
+
+app = FastAPI()
+
+@app.get("/models/{model_name}")
+async def get_model(model_name: ModelName):
+    if model_name == ModelName.alexnet:
+        return {"model_name": model_name, "message": "Deep Learning FTW!"}
+
+    if model_name.value == "lenet":
+        return {"model_name": model_name, "message": "LeCNN all the images"}
+
+    return {"model_name": model_name, "message": "Have some residuals"}
+
+```
+
+### Declara un parámetro de path
+Luego, crea un parámetro de path con anotaciones de tipos usando la clase enum que creaste (ModelName):
+```
+from enum import Enum
+from fastapi import FastAPI
+
+class ModelName(str, Enum):
+    alexnet = "alexnet"
+    resnet = "resnet"
+    lenet = "lenet"
+
+app = FastAPI()
+
+@app.get("/models/{model_name}")
+async def get_model(model_name: ModelName):
+    if model_name == ModelName.alexnet:
+        return {"model_name": model_name, "message": "Deep Learning FTW!"}
+
+    if model_name.value == "lenet":
+        return {"model_name": model_name, "message": "LeCNN all the images"}
+
+    return {"model_name": model_name, "message": "Have some residuals"}
+```
+
+### Revisa la documentación
+Debido a que los valores disponibles para el parámetro de path están predefinidos, la documentación interactiva los puede mostrar bien.
+
+### Trabajando con los enumerations de Python
+El valor del parámetro de path será un enumeration member.
+
+#### Compara enumeration members
+Puedes compararlo con el enumeration member en el enum (ModelName) que creaste:
+```
+from enum import Enum
+from fastapi import FastAPI
+
+class ModelName(str, Enum):
+    alexnet = "alexnet"
+    resnet = "resnet"
+    lenet = "lenet"
+
+app = FastAPI()
+
+@app.get("/models/{model_name}")
+async def get_model(model_name: ModelName):
+    if model_name == ModelName.alexnet:
+        return {"model_name": model_name, "message": "Deep Learning FTW!"}
+    if model_name.value == "lenet":
+        return {"model_name": model_name, "message": "LeCNN all the images"}
+    return {"model_name": model_name, "message": "Have some residuals"}
+```
+
+#### Obtén el enumeration value
+Puedes obtener el valor exacto (un str en este caso) usando model_name.value, o en general, your_enum_member.value:
+```
+from enum import Enum
+from fastapi import FastAPI
+
+class ModelName(str, Enum):
+    alexnet = "alexnet"
+    resnet = "resnet"
+    lenet = "lenet"
+
+app = FastAPI()
+
+@app.get("/models/{model_name}")
+async def get_model(model_name: ModelName):
+    if model_name == ModelName.alexnet:
+        return {"model_name": model_name, "message": "Deep Learning FTW!"}
+    if model_name.value == "lenet":
+        return {"model_name": model_name, "message": "LeCNN all the images"}
+    return {"model_name": model_name, "message": "Have some residuals"}
+```
+
+#### Devuelve enumeration members
+Puedes devolver enum members desde tu operación de path inclusive en un body de JSON anidado (por ejemplo, un dict).
+Ellos serán convertidos a sus valores correspondientes (strings en este caso) antes de devolverlos al cliente:
+```
+from enum import Enum
+from fastapi import FastAPI
+
+class ModelName(str, Enum):
+    alexnet = "alexnet"
+    resnet = "resnet"
+    lenet = "lenet"
+
+app = FastAPI()
+
+@app.get("/models/{model_name}")
+async def get_model(model_name: ModelName):
+    if model_name == ModelName.alexnet:
+        return {"model_name": model_name, "message": "Deep Learning FTW!"}
+    if model_name.value == "lenet":
+        return {"model_name": model_name, "message": "LeCNN all the images"}
+    return {"model_name": model_name, "message": "Have some residuals"}
+```
+
+En tu cliente obtendrás una respuesta en JSON como:
+```
+{
+  "model_name": "alexnet",
+  "message": "Deep Learning FTW!"
+}
+```
+
+### Parámetros de path parameters que contienen paths
+Digamos que tienes una operación de path con un path /files/{file_path}.
+Pero necesitas que el mismo file_path contenga un path como home/johndoe/myfile.txt.
+Entonces, la URL para ese archivo sería algo como: /files/home/johndoe/myfile.txt.
+
+#### Soporte de OpenAPI
+OpenAPI no soporta una manera de declarar un parámetro de path que contenga un path, dado que esto podría llevar a escenarios que son difíciles de probar y definir.
+Sin embargo, lo puedes hacer en FastAPI usando una de las herramientas internas de Starlette.
+La documentación seguirá funcionando, aunque no añadirá ninguna información diciendo que el parámetro debería contener un path.
+
+#### Convertidor de path
+Usando una opción directamente desde Starlette puedes declarar un parámetro de path que contenga un path usando una URL como:
+```
+/files/{file_path:path}
+```
+
+En este caso el nombre del parámetro es file_path y la última parte, :path, le dice que el parámetro debería coincidir con cualquier path.
+Entonces lo puedes usar con:
+```
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/files/{file_path:path}")
+async def read_file(file_path: str):
+    return {"file_path": file_path}
+```
+
+# Parámetros de query
+Cuando declaras otros parámetros de la función que no hacen parte de los parámetros de path estos se interpretan automáticamente como parámetros de "query".
+```
+from fastapi import FastAPI
+app = FastAPI()
+
+fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+
 @app.get("/items/")
 async def read_item(skip: int = 0, limit: int = 10):
     return fake_items_db[skip : skip + limit]
 ```
-La consulta es el conjunto de pares clave-valor que van después del ? en una URL, separados por &.
+
+El query es el conjunto de pares de key-value que van después del ? en la URL, separados por caracteres &.
 Por ejemplo, en la URL:
+```
 http://127.0.0.1:8000/items/?skip=0&limit=10
+```
 ...los parámetros de consulta son:
 - skip: con un valor de 0
 - límite: con un valor de 10
 
-Como son parte de la URL, son cadenas "naturalmente".
-Pero cuando los declara con tipos de Python (en el ejemplo anterior, como int), se convierten a ese tipo y se validan contra él.
+Dado que son parte de la URL son strings "naturalmente".
+Pero cuando los declaras con tipos de Python (en el ejemplo arriba, como int) son convertidos a ese tipo y son validados con él.
+Todo el proceso que aplicaba a los parámetros de path también aplica a los parámetros de query:
+- Soporte del editor (obviamente)
+- "Parsing" de datos
+- Validación de datos
+- Documentación automática
 
-## Valores predeterminados
-Como los parámetros de consulta no son una parte fija de una ruta, pueden ser opcionales y pueden tener valores predeterminados.
-En el ejemplo anterior, tienen valores predeterminados de skip=0 y limit=10.
-Entonces, yendo a la URL:
+## Configuraciones por defecto
+Como los parámetros de query no están fijos en una parte del path pueden ser opcionales y pueden tener valores por defecto.
+El ejemplo arriba tiene skip=0 y limit=10 como los valores por defecto.
+Entonces, si vas a la URL:
 ```
 http://127.0.0.1:8000/items/
 ```
+
 Sería lo mismo que ir a:
 ```
 http://127.0.0.1:8000/items/?skip=0&limit=10
+```
+
+Pero, si por ejemplo vas a:
+```
+http://127.0.0.1:8000/items/?skip=20
 
 ```
+
+Los valores de los parámetros en tu función serán:
+
+- skip=20: porque lo definiste en la URL
+- limit=10: porque era el valor por defecto
 
 ## Parámetros opcionales
 Del mismo modo puedes declarar parámetros de query opcionales definiendo el valor por defecto como None:
 ```
 from typing import Optional
-
 from fastapi import FastAPI
-
 app = FastAPI()
-
 
 @app.get("/items/{item_id}")
 async def read_item(item_id: str, q: Optional[str] = None):
@@ -281,6 +525,10 @@ async def read_item(item_id: str, q: Optional[str] = None):
         return {"item_id": item_id, "q": q}
     return {"item_id": item_id}
 ```
+
+En este caso el parámetro de la función q será opcional y será None por defecto.
+
+## Conversión de tipos de parámetros de query
 
 ## Parámetros de query requeridos
 Cuando declaras un valor por defecto para los parámetros que no son de path (por ahora solo hemos visto parámetros de query), entonces no es requerido.
