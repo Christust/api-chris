@@ -1,0 +1,1 @@
+{"id":"f79698a0-4bb7-46c2-8bd4-e968546493b1","space":22555,"runtime":"python3.9","name":"api-chris","path":"nkexrx","project":"b0wj3gmt","account":"144798365827","region":"us-west-1","deps":["fastapi"],"envs":null,"public":true,"log_level":"debug","cron":""}
