@@ -529,24 +529,133 @@ async def read_item(item_id: str, q: Optional[str] = None):
 En este caso el parámetro de la función q será opcional y será None por defecto.
 
 ## Conversión de tipos de parámetros de query
+También puedes declarar tipos bool y serán convertidos:
+```
+from typing import Optional
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_item(item_id: str, q: Optional[str] = None, short: bool = False):
+    item = {"item_id": item_id}
+    if q:
+        item.update({"q": q})
+    if not short:
+        item.update(
+            {"description": "This is an amazing item that has a long description"}
+        )
+    return item
+```
+
+En este caso, si vas a:
+```
+http://127.0.0.1:8000/items/foo?short=1
+```
+
+o:
+```
+http://127.0.0.1:8000/items/foo?short=True
+```
+
+o:
+```
+http://127.0.0.1:8000/items/foo?short=true
+```
+
+o:
+```
+http://127.0.0.1:8000/items/foo?short=on
+```
+
+o:
+```
+http://127.0.0.1:8000/items/foo?short=yes
+```
+
+o cualquier otra variación (mayúsculas, primera letra en mayúscula, etc.) tu función verá el parámetro short con un valor bool de True. Si no, lo verá como False.
+
+## Múltiples parámetros de path y query
+Puedes declarar múltiples parámetros de path y parámetros de query al mismo tiempo. FastAPI sabe cuál es cuál.
+No los tienes que declarar en un orden específico.
+Serán detectados por nombre:
+```
+from typing import Optional
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/users/{user_id}/items/{item_id}")
+async def read_user_item(
+    user_id: int, item_id: str, q: Optional[str] = None, short: bool = False
+):
+    item = {"item_id": item_id, "owner_id": user_id}
+    if q:
+        item.update({"q": q})
+    if not short:
+        item.update(
+            {"description": "This is an amazing item that has a long description"}
+        )
+    return item
+```
 
 ## Parámetros de query requeridos
 Cuando declaras un valor por defecto para los parámetros que no son de path (por ahora solo hemos visto parámetros de query), entonces no es requerido.
 Si no quieres añadir un valor específico sino solo hacerlo opcional, pon el valor por defecto como None.
 Pero cuando quieres hacer que un parámetro de query sea requerido, puedes simplemente no declararle un valor por defecto:
 ```
-from fastapi import FastAPI
+http://127.0.0.1:8000/items/foo-item
+```
+
+...sin añadir el parámetro needy requerido, verás un error como:
+```
+{
+    "detail": [
+        {
+            "loc": [
+                "query",
+                "needy"
+            ],
+            "msg": "field required",
+            "type": "value_error.missing"
+        }
+    ]
+}
+```
+
+Dado que needy es un parámetro requerido necesitarías declararlo en la URL:
+```
+http://127.0.0.1:8000/items/foo-item?needy=sooooneedy
+```
+
+...esto funcionaría:
+```
+{
+    "item_id": "foo-item",
+    "needy": "sooooneedy"
+}
+```
+
+Por supuesto que también puedes definir algunos parámetros como requeridos, con un valor por defecto y otros completamente opcionales:
+```
 from typing import Optional
+from fastapi import FastAPI
 
 app = FastAPI()
 
-
 @app.get("/items/{item_id}")
-async def read_user_item(item_id: str, needy: str, no_needy: str = "no needy value",optional: Optional[str] = None):
-    if optional:
-        return {"item_id": item_id, "needy": needy, "no_needy":no_needy, "optional":optional}
-    return {"item_id": item_id, "needy": needy, "no_needy":no_needy}
+async def read_user_item(
+    item_id: str, needy: str, skip: int = 0, limit: Optional[int] = None
+):
+    item = {"item_id": item_id, "needy": needy, "skip": skip, "limit": limit}
+    return item
 ```
+
+En este caso hay 3 parámetros de query:
+
+- needy, un str requerido.
+- skip, un int con un valor por defecto de 0.
+- limit, un int opcional.
 
 # Cuerpos de solicitud
 Cuando necesita enviar datos desde un cliente (digamos, un navegador) a su API, los envía como un cuerpo de solicitud.
