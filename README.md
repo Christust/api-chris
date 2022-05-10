@@ -476,7 +476,7 @@ Por ejemplo, en la URL:
 ```
 http://127.0.0.1:8000/items/?skip=0&limit=10
 ```
-...los parámetros de consulta son:
+...los parámetros **query** son:
 - skip: con un valor de 0
 - límite: con un valor de 10
 
@@ -657,35 +657,60 @@ En este caso hay 3 parámetros de query:
 - skip, un int con un valor por defecto de 0.
 - limit, un int opcional.
 
-# Cuerpos de solicitud
-Cuando necesita enviar datos desde un cliente (digamos, un navegador) a su API, los envía como un cuerpo de solicitud.
-Un cuerpo de solicitud son datos enviados por el cliente a su API. Un cuerpo de respuesta son los datos que tu API envía al cliente.
-Su API casi siempre tiene que enviar un cuerpo de respuesta. Pero los clientes no necesariamente necesitan enviar cuerpos de solicitud todo el tiempo.
-Para declarar un cuerpo de solicitud, utiliza modelos Pydantic con todo su poder y beneficios.
+# Request Body
+Cuando necesita enviar datos desde un cliente (digamos, un navegador) a su API, los envía como un **request body**.
+Un **request body** son datos enviados por el cliente a su API. Un **response body** son los datos que tu API envía al cliente.
+Su API casi siempre tiene que enviar un **response body**. Pero los clientes no necesariamente necesitan enviar **request body** todo el tiempo.
+Para declarar un **request body**, utiliza modelos Pydantic con todo su poder y beneficios.
 
 ### Nota
 Para enviar datos, debe usar uno de: POST (el más común), PUT, DELETE o PATCH.
-El envío de un cuerpo con una solicitud GET tiene un comportamiento indefinido en las especificaciones, sin embargo, es compatible con FastAPI, solo para casos de uso muy complejo/extremo.
+El envío de un **request body** GET tiene un comportamiento indefinido en las especificaciones, sin embargo, es compatible con FastAPI, solo para casos de uso muy complejo/extremo.
+Como se desaconseja, los documentos interactivos con la interfaz de usuario de Swagger no mostrarán la documentación del cuerpo al usar GET, y es posible que los proxies intermedios no lo admitan.
 
-## Importar modelo base de Pydantic
-Primero, necesita importar BaseModel desde pydantic:
+## Importar BaseModel de Pydantic
+Primero, necesita importar `BaseModel` desde pydantic:
 ```
+from typing import Optional
+from fastapi import FastAPI
 from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+app = FastAPI()
+
+@app.post("/items/")
+async def create_item(item: Item):
+    return item
 ```
 
 ## Crea tu modelo de datos
 Luego, declara su modelo de datos como una clase que hereda de BaseModel.
 Use tipos estándar de Python para todos los atributos:
 ```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
 class Item(BaseModel):
     name: str
     description: Optional[str] = None
     price: float
     tax: Optional[float] = None
+
+app = FastAPI()
+
+@app.post("/items/")
+async def create_item(item: Item):
+    return item
 ```
 
-Al igual que cuando se declaran parámetros de consulta, cuando un atributo del modelo tiene un valor predeterminado, no es obligatorio. De lo contrario, es obligatorio. Use None para que sea simplemente opcional.
-Por ejemplo, este modelo anterior declara un "objeto" JSON (o dictado de Python) como:
+Al igual que cuando se declaran parámetros de query, cuando un atributo del modelo tiene un valor predeterminado, no es obligatorio. De lo contrario, es obligatorio. Use `None` para que sea simplemente opcional.
+Por ejemplo, este modelo anterior declara un "`objet`" JSON (o `dict` de Python) como:
 ```
 {
     "name": "Foo",
@@ -695,7 +720,7 @@ Por ejemplo, este modelo anterior declara un "objeto" JSON (o dictado de Python)
 }
 ```
 
-...como la descripción y el impuesto son opcionales (con un valor predeterminado de None), este "objeto" JSON también sería válido.
+...como la `description` y `tax` son opcionales (con un valor predeterminado de None), este "`objet`" JSON también sería válido.
 ```
 {
     "name": "Foo",
@@ -704,24 +729,108 @@ Por ejemplo, este modelo anterior declara un "objeto" JSON (o dictado de Python)
 ```
 
 ## Declararlo como un parámetro.
-Para agregarlo a su operación de ruta, declárelo de la misma manera que declaró la ruta y los parámetros de consulta:
+Para agregarlo a su operación de ruta, declárelo de la misma manera que declaró la ruta y los parámetros **query**:
 ```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+app = FastAPI()
+
 @app.post("/items/")
 async def create_item(item: Item):
     return item
 ```
-...y declara su tipo como el modelo que creaste, Item.
+...y declara su tipo como el modelo que creaste, `Item`.
 
-# Parámetros de consulta y validaciones de cadenas
+## Usa el modelo
+Dentro de la función, puede acceder directamente a todos los atributos del objeto modelo:
+```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+app = FastAPI()
+
+@app.post("/items/")
+async def create_item(item: Item):
+    item_dict = item.dict()
+    if item.tax:
+        price_with_tax = item.price + item.tax
+        item_dict.update({"price_with_tax": price_with_tax})
+    return item_dict
+```
+
+## Request Body + Parametros Path
+Puede declarar los parámetros de **path** y el **body request** al mismo tiempo.
+FastAPI reconocerá que los parámetros de la función que coinciden con los parámetros de **path** deben tomarse de la ruta, y que los parámetros de la función que se declaran como modelos de Pydantic deben tomarse del **body request**.
+```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+app = FastAPI()
+
+@app.put("/items/{item_id}")
+async def create_item(item_id: int, item: Item):
+    return {"item_id": item_id, **item.dict()}
+```
+
+## Request Body + Parametros Path + Parametros Query
+También puede declarar **body**, **path** y parámetros **query**, todo al mismo tiempo.
+FastAPI reconocerá cada uno de ellos y tomará los datos del lugar correcto.
+```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+app = FastAPI()
+
+@app.put("/items/{item_id}")
+async def create_item(item_id: int, item: Item, q: Optional[str] = None):
+    result = {"item_id": item_id, **item.dict()}
+    if q:
+        result.update({"q": q})
+    return result
+```
+
+Los parámetros de la función se reconocerán de la siguiente manera:
+- Si el parámetro también se declara en la ruta, se utilizará como parámetro **path**.
+- Si el parámetro es de un tipo singular (como int, float, str, bool, etc.) se interpretará como un parámetro **query**.
+- Si se declara que el parámetro es del tipo de un modelo Pydantic, se interpretará como un **body request**.
+
+# Parámetros **query** y validaciones de cadenas
 FastAPI le permite declarar información adicional y validación para sus parámetros.
 Tomemos esta aplicación como ejemplo:
 ```
 from typing import Optional
-
 from fastapi import FastAPI
 
 app = FastAPI()
-
 
 @app.get("/items/")
 async def read_items(q: Optional[str] = None):
@@ -730,20 +839,18 @@ async def read_items(q: Optional[str] = None):
         results.update({"q": q})
     return results
 ```
-El parámetro de consulta q es de tipo Opcional[str] (o str | None en Python 3.10), eso significa que es de tipo str pero también podría ser None y, de hecho, el valor predeterminado es None, por lo que FastAPI sabrá que no es necesario.
+El parámetro **query** `q` es de tipo `Opcional[str]` (o `str | None` en Python 3.10), eso significa que es de tipo `str` pero también podría ser `None` y, de hecho, el valor predeterminado es `None`, por lo que FastAPI sabrá que no es necesario.
 
 ## Validación adicional
-Vamos a hacer cumplir que aunque q es opcional, siempre que se proporcione, su longitud no supere los 50 caracteres.
+Vamos a hacer cumplir que aunque `q` es opcional, siempre que se proporcione, su longitud no supere los 50 caracteres.
 
 ### Importa Query
-Para lograr eso, primero importa Query desde fastapi:
+Para lograr eso, primero importa `Query` desde fastapi:
 ```
 from typing import Optional
-
 from fastapi import FastAPI, Query
 
 app = FastAPI()
-
 
 @app.get("/items/")
 async def read_items(q: Optional[str] = Query(None, max_length=50)):
@@ -753,13 +860,23 @@ async def read_items(q: Optional[str] = Query(None, max_length=50)):
     return results
 ```
 
-## Usar Query como valor predeterminado
-Y ahora utilícelo como el valor predeterminado de su parámetro, estableciendo el parámetro max_length en 50:
+## Usar `Query` como valor predeterminado
+Y ahora utilícelo como el valor predeterminado de su parámetro, estableciendo el parámetro `max_length` en 50:
 ```
+from typing import Optional
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
 async def read_items(q: Optional[str] = Query(None, max_length=50)):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
 ```
 
-Como tenemos que reemplazar el valor predeterminado None con Query(None), el primer parámetro de Query tiene el mismo propósito de definir ese valor predeterminado.
+Como tenemos que reemplazar el valor predeterminado `None` con `Query(None)`, el primer parámetro de Query tiene el mismo propósito de definir ese valor predeterminado.
 Asi que:
 ```
 q: Optional[str] = Query(None)
@@ -769,15 +886,97 @@ q: Optional[str] = Query(None)
 ```
 q: Optional[str] = None
 ```
-Luego, podemos pasar más parámetros a Query. En este caso, el parámetro max_length que se aplica a las cadenas:
+
+Y en Python 3.10 y superior:
+```
+q: str | None = Query(None)
+```
+
+...hace que el parámetro sea opcional, lo mismo que:
+```
+q: str | None = None
+```
+
+Pero lo declara explícitamente como un parámetro de consulta.
+
+Tenga en cuenta que la parte más importante para hacer que un parámetro sea opcional es la parte:
+```
+= None
+```
+
+o el:
+```
+= Query(None)
+```
+
+ya que usará `None` como el valor predeterminado, y de esa manera hará que el parámetro no sea necesario.
+La parte `Optional` le permite a su editor brindar un mejor soporte, pero no es lo que le dice a FastAPI que este parámetro no es necesario.
+
+Luego, podemos pasar más parámetros a `Query`. En este caso, el parámetro `max_length` que se aplica a las cadenas:
 ```
 q: str = Query(None, max_length=50)
 ```
 
 Esto validará los datos, mostrará un error claro cuando los datos no sean válidos y documentará el parámetro en la operación de ruta de esquema de OpenAPI.
 
+## Agrega mas validaciones
+También puede agregar un parámetro `min_length`:
+```
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(q: str | None = Query(None, min_length=3, max_length=50)):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Agregar expresiones regulares
+Puede definir una expresión regular que el parámetro debe coincidir:
+```
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(
+    q: str | None = Query(None, min_length=3, max_length=50, regex="^fixedquery$")
+):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+Esta expresión regular específica comprueba que el valor del parámetro recibido:
+- ^: comienza con los siguientes caracteres, no tiene caracteres anteriores.
+- fixedquery: tiene el valor exacto fixedquery.
+- $: termina ahí, no tiene más caracteres después de fixedquery.
+
+Si te sientes perdido con todas estas ideas de "expresiones regulares", no te preocupes. Son un tema difícil para muchas personas. Todavía puedes hacer muchas cosas sin necesidad de expresiones regulares todavía.
+Pero siempre que los necesite e ir a aprenderlos, sepa que ya puede usarlos directamente en FastAPI.
+
+## Valores predeterminados
+De la misma manera que puede pasar `None` como el primer argumento que se utilizará como valor predeterminado, puede pasar otros valores.
+Digamos que desea declarar el parámetro de consulta `q` para que tenga una longitud mínima de 3 y un valor predeterminado de "`fixedquery`":
+```
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(q: str = Query("fixedquery", min_length=3)):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
 ## Que sea requerida
-Cuando no necesitamos declarar más validaciones o metadatos, podemos hacer que el parámetro de consulta q sea requerido simplemente no declarando un valor predeterminado, como:
+Cuando no necesitamos declarar más validaciones o metadatos, podemos hacer que el parámetro **query** `q` sea requerido simplemente no declarando un valor predeterminado, como:
 ```
 q: str
 ```
@@ -789,7 +988,7 @@ Pero ahora lo estamos declarando con Query, por ejemplo como:
 ```
 q: Optional[str] = Query(None, min_length=3)
 ```
-Entonces, cuando necesite declarar un valor como requerido mientras usa Query, puede usar ... como el primer argumento:
+Entonces, cuando necesite declarar un valor como requerido mientras usa `Query`, puede usar `...` como el primer argumento:
 ```
 @app.get("/items/")
 async def read_items(q: str = Query(..., min_length=3)):
@@ -799,22 +998,68 @@ async def read_items(q: str = Query(..., min_length=3)):
     return results
 ```
 
-## Lista de parámetros de consulta/valores múltiples
-Cuando define un parámetro de consulta explícitamente con Query, también puede declararlo para recibir una lista de valores, o dicho de otra manera, para recibir múltiples valores.
-Por ejemplo, para declarar un parámetro de consulta q que puede aparecer varias veces en la URL, puede escribir:
+Esto le permitirá a FastAPI saber que este parámetro es obligatorio.
+
+## Lista de parámetros **query**/valores múltiples
+Cuando define un parámetro **query** explícitamente con Query, también puede declararlo para recibir una lista de valores, o dicho de otra manera, para recibir múltiples valores.
+Por ejemplo, para declarar un parámetro **query** `q` que puede aparecer varias veces en la URL, puede escribir:
 ```
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
 @app.get("/items/")
-async def read_items(q: Optional[List[str]] = Query(None)):
+async def read_items(q: list[str] | None = Query(None)):
     query_items = {"q": q}
     return query_items
 ```
+
 Luego, con una URL como:
 ```
 http://localhost:8000/items/?q=foo&q=bar
 ```
 
+recibiría los valores de los múltiples parámetros de consulta q (foo y bar) en una lista de Python dentro de su función de operación de ruta, en el parámetro de función q.
+Entonces, la respuesta a esa URL sería:
+```
+{
+  "q": [
+    "foo",
+    "bar"
+  ]
+}
+```
+
+## Lista de parámetros **query**/valores múltiples con valores predeterminados
+Y también puede definir una lista predeterminada de valores si no se proporciona ninguno:
+```
+from typing import List
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(q: List[str] = Query(["foo", "bar"])):
+    query_items = {"q": q}
+    return query_items
+```
+
+Si vas a:
+```
+http://localhost:8000/items/
+```
+
+el valor predeterminado de q será: ["foo", "bar"] y su respuesta será:
+```
+{
+  "q": [
+    "foo",
+    "bar"
+  ]
+}
+```
 # Parámetros de ruta y validaciones numéricas
-De la misma manera que puede declarar más validaciones y metadatos para parámetros de consulta con Query, puede declarar el mismo tipo de validaciones y metadatos para parámetros de ruta con Path.
+De la misma manera que puede declarar más validaciones y metadatos para parámetros **query** con Query, puede declarar el mismo tipo de validaciones y metadatos para parámetros de ruta con Path.
 
 ## Importar Path
 ```
