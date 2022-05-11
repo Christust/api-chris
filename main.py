@@ -34,7 +34,7 @@ async def get_models(model_name: ModelName):
             return {"model_name":"Es lenet"}
 
 @app.get("/items/{item_id}")
-async def read_item(item_id: int):
+async def read_item(*, item_id: int = Path(..., title="ID of an item", gt=0, le=1000), q: str):
     return {"item_id": item_id}
 
 @app.post("/items")

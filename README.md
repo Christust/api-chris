@@ -137,7 +137,7 @@ app = FastAPI()
 Aquí, la variable de la aplicación será una "instancia" de la clase FastAPI.
 Este será el principal punto de interacción para crear toda su API.
 
-### Paso 3: Crear una operación de ruta
+### Paso 3: Crear una operación **path**
 #### **Ruta**
 "Ruta" aquí se refiere a la última parte de la URL a partir de la primera /
 Entonces, en una URL como:
@@ -175,7 +175,7 @@ Normalmente usas:
 OpenAPI, cada uno de los métodos HTTP se denomina "operación".
 También las llamaremos "operaciones".
 
-#### **Definir un decorador de operación de ruta**
+#### **Definir un decorador de operación **path****
 ```
 @app.get("/")
 ```
@@ -194,8 +194,8 @@ Y las más exóticas:
 - @app.patch()
 - @app.trace()
 
-### Paso 4: Definir la función de operación de ruta
-Esta es nuestra "función de operación de ruta":
+### Paso 4: Definir la función de operación **path**
+Esta es nuestra "función de operación **path**":
 
 - Ruta: es /.
 - Operación: es GET.
@@ -729,7 +729,7 @@ Por ejemplo, este modelo anterior declara un "`objet`" JSON (o `dict` de Python)
 ```
 
 ## Declararlo como un parámetro.
-Para agregarlo a su operación de ruta, declárelo de la misma manera que declaró la ruta y los parámetros **query**:
+Para agregarlo a su operación **path**, declárelo de la misma manera que declaró la ruta y los parámetros **query**:
 ```
 from typing import Optional
 from fastapi import FastAPI
@@ -917,7 +917,7 @@ Luego, podemos pasar más parámetros a `Query`. En este caso, el parámetro `ma
 q: str = Query(None, max_length=50)
 ```
 
-Esto validará los datos, mostrará un error claro cuando los datos no sean válidos y documentará el parámetro en la operación de ruta de esquema de OpenAPI.
+Esto validará los datos, mostrará un error claro cuando los datos no sean válidos y documentará el parámetro en la operación **path** de esquema de OpenAPI.
 
 ## Agrega mas validaciones
 También puede agregar un parámetro `min_length`:
@@ -1019,7 +1019,7 @@ Luego, con una URL como:
 http://localhost:8000/items/?q=foo&q=bar
 ```
 
-recibiría los valores de los múltiples parámetros **query** q (foo y bar) en una lista de Python dentro de su función de operación de ruta, en el parámetro de función q.
+recibiría los valores de los múltiples parámetros **query** q (foo y bar) en una lista de Python dentro de su función de operación **path**, en el parámetro de función q.
 Entonces, la respuesta a esa URL sería:
 ```
 {
@@ -1214,4 +1214,144 @@ async def read_items(
 
 ## Declare metadata
 Puede declarar todos los mismos parámetros que para Query.
-Por ejemplo, para declarar un valor de metadatos de título para el parámetro de ruta item_id, puede escribir:
+Por ejemplo, para declarar un valor de metadatos de título para el parámetro **path** item_id, puede escribir:
+```
+from typing import Optional
+from fastapi import FastAPI, Path, Query
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    item_id: int = Path(..., title="The ID of the item to get"),
+    q: Optional[str] = Query(None, alias="item-query"),
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+Siempre se requiere un parámetro **path**, ya que tiene que ser parte de la ruta.
+Por lo tanto, debe declararlo con `...` para marcarlo como requerido.
+Sin embargo, incluso si lo declaró con `None` o establecer un valor predeterminado, no afectaría nada, seguiría siendo siempre obligatorio.
+
+## Ordena los parámetros como necesites
+Digamos que desea declarar el parámetro **query** `q` como un `str` obligatorio.
+Y no necesita declarar nada más para ese parámetro, por lo que realmente no necesita usar `Query`.
+Pero aún necesita usar `Path` para el parámetro **path** `item_id`.
+Python se quejará si coloca un valor con un "default" antes de un valor que no tiene un "default".
+Pero puede reordenarlos y tener el valor sin un valor predeterminado (el parámetro **query** q) primero.
+No importa para FastAPI. Detectará los parámetros por sus nombres, tipos y declaraciones predeterminadas (`Query`, `Path`, etc.), no le importa el orden.
+Entonces, puedes declarar tu función como:
+```
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    q: str, item_id: int = Path(..., title="The ID of the item to get")
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Ordena los parámetros como necesites, trucos
+Si desea declarar el parámetro **query** `q` sin `Query` ni ningún valor predeterminado, y el parámetro **path** `item_id` usando `Path`, y tenerlos en un orden diferente, Python tiene una pequeña sintaxis especial para eso.
+Pasar *, como primer parámetro de la función.
+Python no hará nada con ese *, pero sabrá que todos los siguientes parámetros deben llamarse como argumentos de palabras clave (key-value pairs), también conocidos como kwargs. Incluso si no tienen un valor predeterminado.
+```
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    *, item_id: int = Path(..., title="The ID of the item to get"), q: str
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Validaciones de números: mayor o igual
+Con `Query` y `Path` (y otros que verá más adelante) puede declarar restricciones de cadenas, pero también restricciones de números.
+Aquí, con `ge=1`, `item_id` deberá ser un número entero "mayor o igual (greater than or equal)" a 1.
+```
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    *, item_id: int = Path(..., title="The ID of the item to get", ge=1), q: str
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Validaciones de números: mayor que y menor que o igual
+Lo mismo aplica para:
+
+- gt: mayor que (greater than)
+- le: menor o igual (less than or equal)
+```
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    *, item_id: int = Path(..., title="The ID of the item to get", ge=1), q: str
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Validaciones de números: flotantes, mayor que y menor que
+Las validaciones de números también funcionan para valores `float`.
+Aquí es donde se vuelve importante poder declarar `gt` y no solo `ge`. Al igual que con él, puede exigir, por ejemplo, que un valor sea mayor que 0, incluso si es menor que 1.
+Entonces, 0.5 sería un valor válido. Pero 0.0 o 0 no lo harían.
+Y lo mismo para el `lt`.
+```
+from fastapi import FastAPI, Path, Query
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    *,
+    item_id: int = Path(..., title="The ID of the item to get", ge=0, le=1000),
+    q: str,
+    size: float = Query(..., gt=0, lt=10.5)
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Recapitalución
+Con `Query`, `Path` (y otras que aún no ha visto) puede declarar metadatos y validaciones de cadenas de la misma manera que con Parámetros de `query` y Validaciones de cadenas.
+Y también puedes declarar validaciones numéricas:
+- gt: greater than
+- ge: greater than or equal
+- lt: less than
+- le: less than or equal
+
+Query, Path y otras que verá más adelante son subclases de una clase Param común (que no necesita usar).
+Y todos ellos comparten los mismos parámetros de validación y metadatos adicionales que ha visto.
+
+Cuando importa Query, Path y otros desde fastapi, en realidad son funciones.
+Que cuando se le llame, devuelva instancias de clases del mismo nombre.
+Entonces, importa Query, que es una función. Y cuando lo llama, devuelve una instancia de una clase también llamada Query.
+Estas funciones están ahí (en lugar de solo usar las clases directamente) para que su editor no marque errores sobre sus tipos.
+De esa manera, puede usar su editor normal y sus herramientas de codificación sin tener que agregar configuraciones personalizadas para ignorar esos errores.
