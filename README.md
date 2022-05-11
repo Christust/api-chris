@@ -897,7 +897,7 @@ q: str | None = Query(None)
 q: str | None = None
 ```
 
-Pero lo declara explícitamente como un parámetro de consulta.
+Pero lo declara explícitamente como un parámetro **query**.
 
 Tenga en cuenta que la parte más importante para hacer que un parámetro sea opcional es la parte:
 ```
@@ -961,7 +961,7 @@ Pero siempre que los necesite e ir a aprenderlos, sepa que ya puede usarlos dire
 
 ## Valores predeterminados
 De la misma manera que puede pasar `None` como el primer argumento que se utilizará como valor predeterminado, puede pasar otros valores.
-Digamos que desea declarar el parámetro de consulta `q` para que tenga una longitud mínima de 3 y un valor predeterminado de "`fixedquery`":
+Digamos que desea declarar el parámetro **query** `q` para que tenga una longitud mínima de 3 y un valor predeterminado de "`fixedquery`":
 ```
 from fastapi import FastAPI, Query
 
@@ -1019,7 +1019,7 @@ Luego, con una URL como:
 http://localhost:8000/items/?q=foo&q=bar
 ```
 
-recibiría los valores de los múltiples parámetros de consulta q (foo y bar) en una lista de Python dentro de su función de operación de ruta, en el parámetro de función q.
+recibiría los valores de los múltiples parámetros **query** q (foo y bar) en una lista de Python dentro de su función de operación de ruta, en el parámetro de función q.
 Entonces, la respuesta a esa URL sería:
 ```
 {
@@ -1030,7 +1030,7 @@ Entonces, la respuesta a esa URL sería:
 }
 ```
 
-## Lista de parámetros **query**/valores múltiples con valores predeterminados
+### Lista de parámetros **query**/valores múltiples con valores predeterminados
 Y también puede definir una lista predeterminada de valores si no se proporciona ninguno:
 ```
 from typing import List
@@ -1058,10 +1058,160 @@ el valor predeterminado de q será: ["foo", "bar"] y su respuesta será:
   ]
 }
 ```
-# Parámetros de ruta y validaciones numéricas
-De la misma manera que puede declarar más validaciones y metadatos para parámetros **query** con Query, puede declarar el mismo tipo de validaciones y metadatos para parámetros de ruta con Path.
+
+#### Usando `list`
+También puede usar list directamente en lugar de `List[str]` (o `list[str]` en Python 3.9+):
+```
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(q: list = Query([])):
+    query_items = {"q": q}
+    return query_items
+```
+
+Tenga en cuenta que, en este caso, FastAPI no verificará el contenido de la lista.
+Por ejemplo, `List[int]` comprobaría (y documentaría) que el contenido de la lista son números enteros. Pero la lista por sí sola no lo haría.
+
+
+## Declarar más metadatos
+Puede agregar más información sobre el parámetro.
+Esa información se incluirá en la OpenAPI generada y será utilizada por las interfaces de usuario de la documentación y las herramientas externas.
+
+### Puedes agregar un titulo:
+```
+from typing import Optional
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(None, title="Query string", min_length=3)
+):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+### Y una descripción:
+```
+from typing import Optional
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(
+        None,
+        title="Query string",
+        description="Query string for the items to search in the database that have a good match",
+        min_length=3,
+    )
+):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Alias parameters
+Imagine que quiere que el parámetro sea `item-query`.
+Como en:
+```
+http://127.0.0.1:8000/items/?item-query=foobaritems
+```
+
+Pero `item-query` no es un nombre de variable de Python válido.
+El más cercano sería `item_query`.
+Pero aún necesita que sea exactamente un `item-query` ...
+Entonces puede declarar un alias, y ese alias es lo que se usará para encontrar el valor del parámetro:
+```
+from typing import Optional
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(q: Optional[str] = Query(None, alias="item-query")):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Parámetros obsoletos
+Ahora digamos que ya no te gusta este parámetro.
+Tienes que dejarlo allí por un tiempo porque hay clientes que lo usan, pero quieres que los documentos lo muestren claramente como obsoleto.
+Entonces pase el parámetro deprecated=True a Query:
+```
+from typing import Optional
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(
+        None,
+        alias="item-query",
+        title="Query string",
+        description="Query string for the items to search in the database that have a good match",
+        min_length=3,
+        max_length=50,
+        regex="^fixedquery$",
+        deprecated=True,
+    )
+):
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+## Excluir de OpenAPI
+Para excluir un parámetro **query** del esquema OpenAPI generado (y, por lo tanto, de los sistemas de documentación automática), establezca el parámetro `include_in_schema` de `Query` en `False`:
+```
+from typing import Optional
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(
+    hidden_query: Optional[str] = Query(None, include_in_schema=False)
+):
+    if hidden_query:
+        return {"hidden_query": hidden_query}
+    else:
+        return {"hidden_query": "Not found"}
+```
+
+# Parámetros **path** y validaciones numéricas
+De la misma manera que puede declarar más validaciones y metadatos para parámetros **query** con `Query`, puede declarar el mismo tipo de validaciones y metadatos para parámetros **path** con Path.
 
 ## Importar Path
 ```
+from typing import Optional
 from fastapi import FastAPI, Path, Query
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    item_id: int = Path(..., title="The ID of the item to get"),
+    q: Optional[str] = Query(None, alias="item-query"),
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
 ```
+
+## Declare metadata
+Puede declarar todos los mismos parámetros que para Query.
+Por ejemplo, para declarar un valor de metadatos de título para el parámetro de ruta item_id, puede escribir:
