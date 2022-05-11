@@ -48,3 +48,7 @@ async def post_item(item: Item):
 @app.get("/code")
 async def get_code():
     return FileResponse("./main.py")
+
+@app.get("/documentation")
+async def get_documentation():
+    return FileResponse("./README.md")

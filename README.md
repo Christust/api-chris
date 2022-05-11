@@ -1358,3 +1358,71 @@ De esa manera, puede usar su editor normal y sus herramientas de codificación s
 
 # Body - Multiples Parametros
 Ahora que hemos visto cómo usar Path y Query, veamos usos más avanzados de las declaraciones del **Request Body**.
+
+## Combina parámetros Path, Query y Body
+En primer lugar, por supuesto, puede mezclar declaraciones de parámetros `Path`, `Query` y **Request Body** libremente y FastAPI sabrá qué hacer.
+Y también puede declarar los **body request** como opcionales, configurando el valor predeterminado en `None`:
+```
+from typing import Optional
+from fastapi import FastAPI, Path
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+@app.put("/items/{item_id}")
+async def update_item(
+    *,
+    item_id: int = Path(..., title="The ID of the item to get", ge=0, le=1000),
+    q: Optional[str] = None,
+    item: Optional[Item] = None,
+):
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    if item:
+        results.update({"item": item})
+    return results
+```
+
+Tenga en cuenta que, en este caso, el elemento que se tomaría del cuerpo es opcional. Como tiene un valor predeterminado None.
+
+## Múltiples parametros Body
+En el ejemplo anterior, las operaciones **path** esperarían un cuerpo JSON con los atributos de un elemento, como:
+```
+{
+    "name": "Foo",
+    "description": "The pretender",
+    "price": 42.0,
+    "tax": 3.2
+}
+```
+
+Pero también puede declarar múltiples parámetros **body**, ej. `item` y `user`:
+```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+class User(BaseModel):
+    username: str
+    full_name: Optional[str] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item, user: User):
+    results = {"item_id": item_id, "item": item, "user": user}
+    return results
+```
