@@ -1355,3 +1355,6 @@ Que cuando se le llame, devuelva instancias de clases del mismo nombre.
 Entonces, importa Query, que es una función. Y cuando lo llama, devuelve una instancia de una clase también llamada Query.
 Estas funciones están ahí (en lugar de solo usar las clases directamente) para que su editor no marque errores sobre sus tipos.
 De esa manera, puede usar su editor normal y sus herramientas de codificación sin tener que agregar configuraciones personalizadas para ignorar esos errores.
+
+# Body - Multiples Parametros
+Ahora que hemos visto cómo usar Path y Query, veamos usos más avanzados de las declaraciones del **Request Body**.
