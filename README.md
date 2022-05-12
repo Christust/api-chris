@@ -1426,3 +1426,176 @@ async def update_item(item_id: int, item: Item, user: User):
     results = {"item_id": item_id, "item": item, "user": user}
     return results
 ```
+
+En este caso, FastAPI notará que hay más de un **body parameters** en la función (dos parámetros que son modelos de Pydantic).
+Entonces, usará los nombres de los parámetros como claves (nombres de campo) en el cuerpo y esperará un cuerpo como:
+```
+{
+    "item": {
+        "name": "Foo",
+        "description": "The pretender",
+        "price": 42.0,
+        "tax": 3.2
+    },
+    "user": {
+        "username": "dave",
+        "full_name": "Dave Grohl"
+    }
+}
+```
+
+Tenga en cuenta que aunque el elemento se declaró de la misma manera que antes, ahora se espera que esté dentro del cuerpo con un elemento clave.
+FastAPI hará la conversión automática de la solicitud, de modo que el parámetro `item` reciba su contenido específico y lo mismo para `user`.
+Realizará la validación de los datos compuestos y los documentará así para el esquema OpenAPI y los documentos automáticos.
+
+## Valores singulares en el **body**
+De la misma manera que hay `Query` y `Path` para definir datos adicionales para los parámetros de consulta y ruta, FastAPI proporciona un `Body` equivalente.
+Por ejemplo, ampliando el modelo anterior, podría decidir que quiere tener otra clave `importance` en el mismo cuerpo, además de `item` y el `user`.
+Si lo declara tal cual, porque es un valor singular, FastAPI asumirá que es un parámetro de consulta.
+Pero puede indicarle a FastAPI que lo trate como otra clave de cuerpo usando Body:
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+class User(BaseModel):
+    username: str
+    full_name: Optional[str] = None
+
+@app.put("/items/{item_id}")
+async def update_item(
+    item_id: int, item: Item, user: User, importance: int = Body(...)
+):
+    results = {"item_id": item_id, "item": item, "user": user, "importance": importance}
+    return results
+```
+
+En este caso, FastAPI esperará un **body** como:
+```
+{
+    "item": {
+        "name": "Foo",
+        "description": "The pretender",
+        "price": 42.0,
+        "tax": 3.2
+    },
+    "user": {
+        "username": "dave",
+        "full_name": "Dave Grohl"
+    },
+    "importance": 5
+}
+```
+
+Nuevamente, convertirá los tipos de datos, validará, documentará, etc.
+
+## Múltiples parámetros **body** y **query**
+Por supuesto, también puede declarar parámetros **query** adicionales cuando lo necesite, además de cualquier parámetro **body**.
+Como, de forma predeterminada, los valores singulares se interpretan como parámetros **query**, no tiene que agregar explícitamente un `Query`, solo puede hacer lo siguiente:
+```
+q: Optional[str] = None
+```
+
+O en Python 3.10 y superior:
+```
+q: str | None = None
+```
+
+Por ejemplo:
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+class User(BaseModel):
+    username: str
+    full_name: Optional[str] = None
+
+@app.put("/items/{item_id}")
+async def update_item(
+    *,
+    item_id: int,
+    item: Item,
+    user: User,
+    importance: int = Body(..., gt=0),
+    q: Optional[str] = None
+):
+    results = {"item_id": item_id, "item": item, "user": user, "importance": importance}
+    if q:
+        results.update({"q": q})
+    return results
+```
+
+Body también tiene los mismos parámetros adicionales de metadatos y validación que Query, Path y otros que verá más adelante.
+
+## Incustrar un solo parámetro **body**
+Supongamos que solo tiene un parámetro **body** `item` único de un modelo Pydantic `Item`.
+De forma predeterminada, FastAPI esperará su **body** directamente.
+Pero si desea que espere un JSON con una clave `item` y dentro de él el contenido del modelo, como lo hace cuando declara parámetros de cuerpo adicionales, puede usar el parámetro `Body` especial `embed`:
+```
+item: Item = Body(..., embed=True)
+```
+
+como en:
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item = Body(..., embed=True)):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+En este caso, FastAPI esperará un cuerpo como:
+```
+{
+    "item": {
+        "name": "Foo",
+        "description": "The pretender",
+        "price": 42.0,
+        "tax": 3.2
+    }
+}
+```
+
+en vez de:
+```
+{
+    "name": "Foo",
+    "description": "The pretender",
+    "price": 42.0,
+    "tax": 3.2
+}
+```
+
+## Resumen
+Puede agregar varios parámetros **body** a su función de operación **path**, aunque una solicitud solo puede tener un **body**.
+Pero FastAPI lo manejará, le brindará los datos correctos en su función y validará y documentará el esquema correcto en la operación **path**.
+También puede declarar valores singulares para que se reciban como parte del **body**.
+Y puede indicarle a FastAPI que incruste **body** en una clave incluso cuando solo se haya declarado un parámetro.

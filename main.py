@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 from enum import Enum
 from fastapi.responses import FileResponse
+import uvicorn
 
 app = FastAPI()
 
@@ -52,3 +53,6 @@ async def get_code():
 @app.get("/documentation")
 async def get_documentation():
     return FileResponse("./README.md")
+
+# Descomentar para depurar
+# uvicorn.run(app, host="0.0.0.0", port=8000)
