@@ -1599,3 +1599,70 @@ Puede agregar varios parámetros **body** a su función de operación **path**, 
 Pero FastAPI lo manejará, le brindará los datos correctos en su función y validará y documentará el esquema correcto en la operación **path**.
 También puede declarar valores singulares para que se reciban como parte del **body**.
 Y puede indicarle a FastAPI que incruste **body** en una clave incluso cuando solo se haya declarado un parámetro.
+
+# Body - Fields
+De la misma manera que puede declarar validación y metadatos adicionales en los parámetros de la función de operación **path** con Query, Path y Body, puede declarar la validación y los metadatos dentro de los modelos de Pydantic usando Field de Pydantic.
+
+## Importar Field
+Primero, tienes que importarlo:
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = Field(
+        None, title="The description of the item", max_length=300
+    )
+    price: float = Field(..., gt=0, description="The price must be greater than zero")
+    tax: Optional[float] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item = Body(..., embed=True)):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Tenga en cuenta que Field se importa directamente desde pydantic, no desde fastapi como todos los demás (Consulta, Ruta, Cuerpo, etc.).
+
+## Declarar atributos del modelo
+Luego puede usar Field con atributos de modelo:
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = Field(
+        None, title="The description of the item", max_length=300
+    )
+    price: float = Field(..., gt=0, description="The price must be greater than zero")
+    tax: Optional[float] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item = Body(..., embed=True)):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Field funciona de la misma manera que Query, Path y Body, tiene todos los mismos parámetros, etc.
+En realidad, Query, Path y otros que verá a continuación crean objetos de subclases de una clase Param común, que es en sí misma una subclase de la clase FieldInfo de Pydantic.
+Y Field también devuelve una instancia de FieldInfo.
+Body también devuelve objetos de una subclase de FieldInfo directamente. Y hay otras que verás más adelante que son subclases de la clase Body.
+Recuerde que cuando importa Query, Path y otras desde fastapi, en realidad son funciones que devuelven clases especiales.
+Observe cómo el atributo de cada modelo con un tipo, valor predeterminado y Field tiene la misma estructura que el parámetro de una función de operación **path**, con Field en lugar Path, Query y Body.
+
+## Añadir información adicional
+Puede declarar información adicional en Field, Query, Body, etc. Y se incluirá en el Esquema JSON generado.
+Aprenderá más sobre cómo agregar información adicional más adelante en los documentos, cuando aprenda a declarar ejemplos.
+Las claves adicionales pasadas a Field también estarán presentes en el esquema OpenAPI resultante para su aplicación. Como es posible que estas claves no formen parte necesariamente de la especificación de OpenAPI, es posible que algunas herramientas de OpenAPI, por ejemplo, el validador de OpenAPI, no funcionen con su esquema generado.
+
+## Resumen
+Puede usar el campo de Pydantic para declarar validaciones y metadatos adicionales para los atributos del modelo.
+También puede usar los argumentos de palabras clave adicionales para pasar metadatos de esquema JSON adicionales.
