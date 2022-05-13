@@ -1666,3 +1666,239 @@ Las claves adicionales pasadas a Field también estarán presentes en el esquema
 ## Resumen
 Puede usar el campo de Pydantic para declarar validaciones y metadatos adicionales para los atributos del modelo.
 También puede usar los argumentos de palabras clave adicionales para pasar metadatos de esquema JSON adicionales.
+
+# Body - Modelos anidados
+Con FastAPI, puede definir, validar, documentar y usar modelos arbitrariamente anidados (gracias a Pydantic).
+
+## Campos de lista
+Puede definir un atributo para que sea un subtipo. Por ejemplo, un `list` de Python:
+```
+from typing import Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: list = []
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Esto hará que `tags` sean una lista de elementos. Aunque no declara el tipo de cada uno de los elementos.
+
+## Campos `List` con  tipo de parámetro
+Pero Python tiene una forma específica de declarar listas con tipos internos o "parámetros de tipo":
+
+### Importar `List` de `typing`
+En Python 3.9 y superior, puede usar la lista estándar para declarar estas anotaciones de tipo, como veremos a continuación.
+Pero en las versiones de Python anteriores a la 3.9 (3.6 y superiores), primero debe importar List desde el módulo `typing` estándar de Python:
+```
+from typing import List, Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: List[str] = []
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+### Declarar `list` con un parámetro de tipo
+Para declarar tipos que tienen parámetros de tipo (tipos internos), como `list`, `dict`, `tuple`:
+- Si tiene una versión de Python anterior a la 3.9, importe su versión equivalente desde el módulo de escritura
+- Pase los tipos internos como "parámetros de tipo" utilizando corchetes: [ y ]
+
+En Python 3.9 sería:
+```
+my_list: list[str]
+```
+
+En versiones de Python anteriores a la 3.9, sería:
+```
+from typing import List
+
+my_list: List[str]
+```
+
+Esa es toda la sintaxis estándar de Python para declaraciones de tipos.
+Utilice esa misma sintaxis estándar para los atributos del modelo con tipos internos.
+Entonces, en nuestro ejemplo, podemos hacer que `tags` sean específicamente una "lista de cadenas":
+```
+from typing import List, Optional
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: List[str] = []
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+## Tipos `Set`
+Pero luego lo pensamos y nos damos cuenta de que las etiquetas no deberían repetirse, probablemente serían cadenas únicas.
+Y Python tiene un tipo de datos especial para conjuntos de elementos únicos, `set`.
+Entonces podemos declarar `tags` como un conjunto de cadenas:
+```
+from typing import Optional, Set
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: Set[str] = set()
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Con esto, incluso si recibe una solicitud con datos duplicados, se convertirá en un conjunto de elementos únicos.
+Y cada vez que genere esos datos, incluso si la fuente tuviera duplicados, se generará como un conjunto de elementos únicos.
+Y también se anotará / documentará en consecuencia.
+
+## Modelos anidados
+Cada atributo de un modelo Pydantic tiene un tipo.
+Pero ese tipo puede ser en sí mismo otro modelo Pydantic.
+Por lo tanto, puede declarar "objetos" JSON profundamente anidados con nombres, tipos y validaciones de atributos específicos.
+Todo eso, arbitrariamente anidado.
+
+### Define un submodelo
+Por ejemplo, podemos definir un modelo `Image`:
+```
+from typing import Optional, Set
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Image(BaseModel):
+    url: str
+    name: str
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: Set[str] = set()
+    image: Optional[Image] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+### Usar el submodelo como un tipo
+Y luego podemos usarlo como el tipo de un atributo:
+```
+from typing import Optional, Set
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Image(BaseModel):
+    url: str
+    name: str
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: Set[str] = set()
+    image: Optional[Image] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Esto significaría que FastAPI esperaría un cuerpo similar a:
+```
+{
+    "name": "Foo",
+    "description": "The pretender",
+    "price": 42.0,
+    "tax": 3.2,
+    "tags": ["rock", "metal", "bar"],
+    "image": {
+        "url": "http://example.com/baz.jpg",
+        "name": "The Foo live"
+    }
+}
+```
+
+Nuevamente, haciendo solo esa declaración, con FastAPI obtienes:
+- Compatibilidad con el editor (finalización, etc.), incluso para modelos anidados
+- Conversión de datos
+- Validación de datos
+- Documentación automática
+
+## Tipos especiales y validación
+Aparte de los tipos singulares normales como str, int, float, etc. Puede usar tipos singulares más complejos que heredan de str.
+Para ver todas las opciones que tiene, consulte los documentos de los tipos exóticos de Pydantic. Verá algunos ejemplos en el próximo capítulo.
+Por ejemplo, como en el modelo `Image` tenemos un campo de `url`, podemos declararlo en lugar de `str`, `HttpUrl` de Pydantic:
+```
+from typing import Optional, Set
+from fastapi import FastAPI
+from pydantic import BaseModel, HttpUrl
+
+app = FastAPI()
+
+class Image(BaseModel):
+    url: HttpUrl
+    name: str
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: Set[str] = set()
+    image: Optional[Image] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Se comprobará que la cadena sea una URL válida y se documentará en JSON Schema/OpenAPI como tal.
+
+
+# new
