@@ -1900,5 +1900,367 @@ async def update_item(item_id: int, item: Item):
 
 Se comprobará que la cadena sea una URL válida y se documentará en JSON Schema/OpenAPI como tal.
 
+## Atributos con listas de submodelos
+También puede usar modelos Pydantic como subtipos de `list`, `set`, etc.:
+```
+from typing import List, Optional, Set
+from fastapi import FastAPI
+from pydantic import BaseModel, HttpUrl
+
+app = FastAPI()
+
+class Image(BaseModel):
+    url: HttpUrl
+    name: str
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: Set[str] = set()
+    images: Optional[List[Image]] = None
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Esto esperará (convertir, validar, documentar, etc.) un cuerpo JSON como:
+```
+{
+    "name": "Foo",
+    "description": "The pretender",
+    "price": 42.0,
+    "tax": 3.2,
+    "tags": [
+        "rock",
+        "metal",
+        "bar"
+    ],
+    "images": [
+        {
+            "url": "http://example.com/baz.jpg",
+            "name": "The Foo live"
+        },
+        {
+            "url": "http://example.com/dave.jpg",
+            "name": "The Baz"
+        }
+    ]
+}
+```
+
+Observe cómo la clave de `images` ahora tiene una `list` de objetos `Image`.
+
+## Modelos profundamente anidados
+Puede definir arbitrariamente modelos profundamente anidados:
+```
+from typing import List, Optional, Set
+from fastapi import FastAPI
+from pydantic import BaseModel, HttpUrl
+
+app = FastAPI()
+
+class Image(BaseModel):
+    url: HttpUrl
+    name: str
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    tags: Set[str] = set()
+    images: Optional[List[Image]] = None
+
+class Offer(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    items: List[Item]
+
+@app.post("/offers/")
+async def create_offer(offer: Offer):
+    return offer
+```
+
+Observe cómo `Offer` tiene una lista de `Item`s, que a su vez tienen una lista opcional de `Image`s
+
+## Cuerpos de listas puras
+Si el valor de nivel superior del cuerpo JSON que espera es una matriz JSON (una lista de Python), puede declarar el tipo en el parámetro de la función, al igual que en los modelos de Pydantic:
+```
+images: List[Image]
+```
+
+o en Python 3.9 y superior:
+```
+images: List[Image]
+```
+
+como en:
+```
+from typing import List
+from fastapi import FastAPI
+from pydantic import BaseModel, HttpUrl
+
+app = FastAPI()
+
+class Image(BaseModel):
+    url: HttpUrl
+    name: str
+
+@app.post("/images/multiple/")
+async def create_multiple_images(images: List[Image]):
+    return images
+```
+
+## Soporte para editores en todas partes
+Y obtienes soporte de editor en todas partes.
+No podría obtener este tipo de soporte de editor si estuviera trabajando directamente con dict en lugar de modelos Pydantic.
+Pero tampoco tiene que preocuparse por ellos, los dictados entrantes se convierten automáticamente y su salida también se convierte automáticamente a JSON.
+
+## Cuerpos de `dict`s arbitrarios
+También puede declarar un cuerpo como `dict` con claves de algún tipo y valores de otro tipo.
+Sin tener que saber de antemano cuáles son los nombres de campo/atributo válidos (como sería el caso de los modelos de Pydantic).
+Esto sería útil si desea recibir claves que aún no conoce.
+Otro caso útil es cuando desea tener claves de otro tipo, eje. `int`.
+Eso es lo que vamos a ver aquí.
+En este caso, aceptaría cualquier `dict` siempre que tenga claves `int` con valores `float`:
+```
+from typing import Dict
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/index-weights/")
+async def create_index_weights(weights: Dict[int, float]):
+    return weights
+```
+
+Tenga en cuenta que JSON solo admite str como claves.
+Pero Pydantic tiene conversión automática de datos.
+Esto significa que, aunque sus clientes API solo pueden enviar cadenas como claves, siempre que esas cadenas contengan números enteros puros, Pydantic las convertirá y las validará.
+Y el dict que recibe como pesos en realidad tendrá claves int y valores flotantes.
+
+## Resumen
+Con FastAPI tiene la máxima flexibilidad que brindan los modelos de Pydantic, mientras mantiene su código simple, corto y elegante.
+Pero con todos los beneficios:
+- Compatibilidad con el editor (¡completado en todas partes!)
+- Conversión de datos (también conocido como análisis/serialización)
+- Validación de datos
+- Documentación del esquema
+- Documentos automáticos
+
+# Declarar solicitud de datos de ejemplo
+Puede declarar ejemplos de los datos que su aplicación puede recibir.
+Aquí hay varias maneras de hacerlo.
+
+## Pydantic `schema_extra`
+Puede declarar un ejemplo para un modelo Pydantic usando Config y schema_extra, como se describe en los documentos de Pydantic: Personalización del esquema:
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: str | None = None
+    price: float
+    tax: float | None = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "name": "Foo",
+                "description": "A very nice Item",
+                "price": 35.4,
+                "tax": 3.2,
+            }
+        }
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Esa información adicional se agregará tal cual al esquema JSON de salida para ese modelo, y se usará en los documentos de la API.
+
+## Argumentos adicionales `Field`
+Al usar `Field()` con modelos Pydantic, también puede declarar información adicional para el esquema JSON pasando cualquier otro argumento arbitrario a la función.
+Puede usar esto para agregar un ejemplo para cada campo:
+```
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str = Field(example="Foo")
+    description: str | None = Field(default=None, example="A very nice Item")
+    price: float = Field(example=35.4)
+    tax: float | None = Field(default=None, example=3.2)
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+Tenga en cuenta que esos argumentos adicionales pasados ​​no agregarán ninguna validación, solo información adicional, con fines de documentación.
+
+## `example` y `examples` en OpenAPI
+Al usar cualquiera de:
+
+- Sendero()
+- Consulta()
+- Encabezamiento()
+- Galleta()
+- Cuerpo()
+- Forma()
+- Archivo()
+
+también puede declarar un `expample` de datos o un grupo de `expamples` con información adicional que se agregará a OpenAPI.
+
+## Body con example
+Aquí pasamos un `expample` de los datos esperados en `Body()`:
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+@app.put("/items/{item_id}")
+async def update_item(
+    item_id: int,
+    item: Item = Body(
+        example={
+            "name": "Foo",
+            "description": "A very nice Item",
+            "price": 35.4,
+            "tax": 3.2,
+        },
+    ),
+):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+## Body con múltiples ejemplos
+Alternativamente al `example` único, puede pasar `examples` usando un `dict` con múltiples ejemplos, cada uno con información adicional que también se agregará a OpenAPI.
+Las claves del `dict` identifican cada ejemplo, y cada valor es otro `dict`.
+Cada `dict` de ejemplo específico en los `examples` puede contener:
+- summary: Breve descripción del ejemplo.
+- description: una descripción larga que puede contener texto Markdown.
+- value: Este es el ejemplo real que se muestra, p. un dictado
+- externalValue: alternativa al valor, una URL que apunta al ejemplo. Aunque es posible que esto no sea compatible con tantas herramientas como value.
+```
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+@app.put("/items/{item_id}")
+async def update_item(
+    *,
+    item_id: int,
+    item: Item = Body(
+        examples={
+            "normal": {
+                "summary": "A normal example",
+                "description": "A **normal** item works correctly.",
+                "value": {
+                    "name": "Foo",
+                    "description": "A very nice Item",
+                    "price": 35.4,
+                    "tax": 3.2,
+                },
+            },
+            "converted": {
+                "summary": "An example with converted data",
+                "description": "FastAPI can convert price `strings` to actual `numbers` automatically",
+                "value": {
+                    "name": "Bar",
+                    "price": "35.4",
+                },
+            },
+            "invalid": {
+                "summary": "Invalid data is rejected with an error",
+                "value": {
+                    "name": "Baz",
+                    "price": "thirty five point four",
+                },
+            },
+        },
+    ),
+):
+    results = {"item_id": item_id, "item": item}
+    return results
+```
+
+# Tipos de datos adicionales
+Hasta ahora, ha estado usando tipos de datos comunes, como:
+- int
+- float
+- str
+- bool
+
+Pero también puede usar tipos de datos más complejos.
+Y seguirás teniendo las mismas características que has visto hasta ahora:
+- Gran apoyo del editor.
+- Conversión de datos de solicitudes entrantes.
+- Conversión de datos para datos de respuesta.
+- Validación de datos.
+- Anotación y documentación automática.
+
+## Otros tipos de datos
+Estos son algunos de los tipos de datos adicionales que puede usar:
+- UUID:
+- - Un "Identificador único universal" estándar, común como ID en muchas bases de datos y sistemas.
+- - En solicitudes y respuestas se representará como una str.
+- datetime.datetime:
+- - Un archivo datetime.datetime de Python.
+- - Las solicitudes y respuestas se representarán como una cadena en formato ISO 8601, como: 2008-09-15T15:53:00+05:00.
+- datetime.date:
+- - Python fechahora.fecha.
+- - En las solicitudes y respuestas se representará como una cadena en formato ISO 8601, como: 2008-09-15.
+fechahora.hora:
+Una fecha y hora de Python.
+En las solicitudes y respuestas se representará como una cadena en formato ISO 8601, como: 14:23:55.003.
+fechahora.timedelta:
+Un archivo datetime.timedelta de Python.
+En las solicitudes y respuestas se representará como un flotante de segundos totales.
+Pydantic también permite representarlo como una "codificación de diferencia de tiempo ISO 8601", consulte los documentos para obtener más información.
+conjunto congelado:
+En solicitudes y respuestas, tratadas igual que un conjunto:
+En las solicitudes se leerá un listado, eliminando los duplicados y convirtiéndolo en un conjunto.
+En las respuestas, el conjunto se convertirá en una lista.
+El esquema generado especificará que los valores establecidos son únicos (usando los elementos únicos del esquema JSON).
+bytes:
+Bytes estándar de Python.
+En solicitudes y respuestas serán tratadas como str.
+El esquema generado especificará que es una cadena con "formato" binario.
+Decimal:
+Decimal estándar de Python.
+En solicitudes y respuestas, se maneja igual que un flotante.
+Puede verificar todos los tipos de datos pydantic válidos aquí: Tipos de datos pydantic.
+
 
 # new
