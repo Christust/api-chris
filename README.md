@@ -2241,26 +2241,88 @@ Estos son algunos de los tipos de datos adicionales que puede usar:
 - datetime.date:
 - - Python fechahora.fecha.
 - - En las solicitudes y respuestas se representará como una cadena en formato ISO 8601, como: 2008-09-15.
-fechahora.hora:
-Una fecha y hora de Python.
-En las solicitudes y respuestas se representará como una cadena en formato ISO 8601, como: 14:23:55.003.
-fechahora.timedelta:
-Un archivo datetime.timedelta de Python.
-En las solicitudes y respuestas se representará como un flotante de segundos totales.
-Pydantic también permite representarlo como una "codificación de diferencia de tiempo ISO 8601", consulte los documentos para obtener más información.
-conjunto congelado:
-En solicitudes y respuestas, tratadas igual que un conjunto:
-En las solicitudes se leerá un listado, eliminando los duplicados y convirtiéndolo en un conjunto.
-En las respuestas, el conjunto se convertirá en una lista.
-El esquema generado especificará que los valores establecidos son únicos (usando los elementos únicos del esquema JSON).
-bytes:
-Bytes estándar de Python.
-En solicitudes y respuestas serán tratadas como str.
-El esquema generado especificará que es una cadena con "formato" binario.
-Decimal:
-Decimal estándar de Python.
-En solicitudes y respuestas, se maneja igual que un flotante.
-Puede verificar todos los tipos de datos pydantic válidos aquí: Tipos de datos pydantic.
+- datetime.time:
+- - Una fecha y hora de Python.
+- - En las solicitudes y respuestas se representará como una cadena en formato ISO 8601, como: 14:23:55.003.
+- datetime.timedelta:
+- - Un archivo datetime.timedelta de Python.
+- - En las solicitudes y respuestas se representará como un flotante de segundos totales.
+- - Pydantic también permite representarlo como una "codificación de diferencia de tiempo ISO 8601", consulte los documentos para obtener más información.
+- frozenset:
+- - En solicitudes y respuestas, tratadas igual que un conjunto:
+- - En las solicitudes se leerá un listado, eliminando los duplicados y convirtiéndolo en un conjunto.
+- - En las respuestas, el conjunto se convertirá en una lista.
+- - El esquema generado especificará que los valores establecidos son únicos (usando los elementos únicos del esquema JSON).
+- bytes:
+- - Bytes estándar de Python.
+- - En solicitudes y respuestas serán tratadas como str.
+- - El esquema generado especificará que es una cadena con "formato" binario.
+- Decimal:
+- - Decimal estándar de Python.
+- - En solicitudes y respuestas, se maneja igual que un flotante.
+- Puede verificar todos los tipos de datos pydantic válidos aquí: Tipos de datos pydantic.
+
+## Ejemplo
+Aquí hay una operación **path** de ejemplo con parámetros que usan algunos de los tipos anteriores.
+```
+from datetime import datetime, time, timedelta
+from typing import Union
+from uuid import UUID
+from fastapi import Body, FastAPI
+
+app = FastAPI()
+
+@app.put("/items/{item_id}")
+async def read_items(
+    item_id: UUID,
+    start_datetime: Union[datetime, None] = Body(default=None),
+    end_datetime: Union[datetime, None] = Body(default=None),
+    repeat_at: Union[time, None] = Body(default=None),
+    process_after: Union[timedelta, None] = Body(default=None),
+):
+    start_process = start_datetime + process_after
+    duration = end_datetime - start_process
+    return {
+        "item_id": item_id,
+        "start_datetime": start_datetime,
+        "end_datetime": end_datetime,
+        "repeat_at": repeat_at,
+        "process_after": process_after,
+        "start_process": start_process,
+        "duration": duration,
+    }
+```
+
+Tenga en cuenta que los parámetros dentro de la función tienen su tipo de datos natural y puede, por ejemplo, realizar manipulaciones de fechas normales, como:
+```
+from datetime import datetime, time, timedelta
+from typing import Union
+from uuid import UUID
+from fastapi import Body, FastAPI
+
+app = FastAPI()
+
+@app.put("/items/{item_id}")
+async def read_items(
+    item_id: UUID,
+    start_datetime: Union[datetime, None] = Body(default=None),
+    end_datetime: Union[datetime, None] = Body(default=None),
+    repeat_at: Union[time, None] = Body(default=None),
+    process_after: Union[timedelta, None] = Body(default=None),
+):
+    start_process = start_datetime + process_after
+    duration = end_datetime - start_process
+    return {
+        "item_id": item_id,
+        "start_datetime": start_datetime,
+        "end_datetime": end_datetime,
+        "repeat_at": repeat_at,
+        "process_after": process_after,
+        "start_process": start_process,
+        "duration": duration,
+    }
+```
+
 
 
 # new
