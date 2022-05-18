@@ -2323,6 +2323,233 @@ async def read_items(
     }
 ```
 
+# Modelo de respuesta
+Puede declarar el modelo utilizado para la respuesta con el parámetro response_model en cualquiera de las operaciones **path**:
 
+- @aplicación.get()
+- @aplicación.post()
+- @aplicación.put()
+- @aplicación.delete()
+- etc.
+```
+from typing import List, Union
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Union[str, None] = None
+    price: float
+    tax: Union[float, None] = None
+    tags: List[str] = []
+
+@app.post("/items/", response_model=Item)
+async def create_item(item: Item):
+    return item
+```
+
+Tenga en cuenta que el modelo de respuesta es un parámetro del método "decorador" (obtener, publicar, etc.). No de su función de operación de ruta, como todos los parámetros y el cuerpo.
+
+Recibe el mismo tipo que declararía para un atributo de modelo Pydantic, por lo que puede ser un modelo Pydantic, pero también puede ser, p. una lista de modelos Pydantic, como List[Item].
+
+FastAPI utilizará este modelo de respuesta para:
+- Convierta los datos de salida a su declaración de tipo.
+- Validar los datos.
+- Agregue un esquema JSON para la respuesta, en la operación de ruta de OpenAPI.
+- Será utilizado por los sistemas automáticos de documentación.
+
+Pero lo mas importante:
+- Limitará los datos de salida a los del modelo. Veremos cómo eso es importante a continuación.
+
+El modelo de respuesta se declara en este parámetro en lugar de como una anotación de tipo de retorno de función, porque es posible que la función de ruta en realidad no devuelva ese modelo de respuesta, sino que devuelva un dictado, un objeto de base de datos o algún otro modelo, y luego use el modelo de respuesta para realizar el campo. limitación y serialización.
+
+## Devolver los mismos datos de entrada
+Aquí estamos declarando un modelo **UserIn**, contendrá una contraseña de texto sin formato:
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel, EmailStr
+
+app = FastAPI()
+
+class UserIn(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+# Don't do this in production!
+@app.post("/user/", response_model=UserIn)
+async def create_user(user: UserIn):
+    return user
+```
+
+Y estamos usando este modelo para declarar nuestra entrada y el mismo modelo para declarar nuestra salida:
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel, EmailStr
+
+app = FastAPI()
+
+class UserIn(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+# Don't do this in production!
+@app.post("/user/", response_model=UserIn)
+async def create_user(user: UserIn):
+    return user
+```
+
+Ahora, cada vez que un navegador crea un usuario con una contraseña, la API devolverá la misma contraseña en la respuesta.
+En este caso, puede que no sea un problema, porque el propio usuario está enviando la contraseña.
+Pero si usamos el mismo modelo para otra operación de ruta, podríamos estar enviando las contraseñas de nuestros usuarios a cada cliente.
+
+Nunca almacene la contraseña simple de un usuario ni la envíe en una respuesta.
+
+## Agregar un modelo de salida
+En su lugar, podemos crear un modelo de entrada con la contraseña de texto sin formato y un modelo de salida sin ella:
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel, EmailStr
+
+app = FastAPI()
+
+class UserIn(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserOut(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+@app.post("/user/", response_model=UserOut)
+async def create_user(user: UserIn):
+    return user
+```
+
+Aquí, aunque nuestra función de operación de ruta devuelve el mismo usuario de entrada que contiene la contraseña:
+```
+    return user
+```
+
+... declaramos que el `response_model` es nuestro modelo `UserOut`, que no incluye la contraseña:
+```
+@app.post("/user/", response_model=UserOut)
+```
+
+Entonces, FastAPI se encargará de filtrar todos los datos que no estén declarados en el modelo de salida (usando Pydantic).
+
+## Parámetros de codificación del modelo de respuesta
+Su modelo de respuesta podría tener valores predeterminados, como:
+```
+from typing import List, Union
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Union[str, None] = None
+    price: float
+    tax: float = 10.5
+    tags: List[str] = []
+
+items = {
+    "foo": {"name": "Foo", "price": 50.2},
+    "bar": {"name": "Bar", "description": "The bartenders", "price": 62, "tax": 20.2},
+    "baz": {"name": "Baz", "description": None, "price": 50.2, "tax": 10.5, "tags": []},
+}
+
+@app.get("/items/{item_id}", response_model=Item, response_model_exclude_unset=True)
+async def read_item(item_id: str):
+    return items[item_id]
+```
+
+- `description: Union[str, None] = None` tiene un valor predeterminado de None.
+- `tax: float = 10.5` tiene un valor predeterminado de 10.5.
+- `tags: List[str] = []` tiene como valor predeterminado de una lista vacía: [].
+
+pero es posible que desee omitirlos del resultado si no se almacenaron realmente.
+
+Por ejemplo, si tiene modelos con muchos atributos opcionales en una base de datos NoSQL, pero no desea enviar respuestas JSON muy largas llenas de valores predeterminados.
+
+## Utilice el parámetro response_model_exclude_unset
+Puede configurar el parámetro decorador de la operación de ruta de acceso response_model_exclude_unset=True:
+```
+from typing import List, Union
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Union[str, None] = None
+    price: float
+    tax: float = 10.5
+    tags: List[str] = []
+
+items = {
+    "foo": {"name": "Foo", "price": 50.2},
+    "bar": {"name": "Bar", "description": "The bartenders", "price": 62, "tax": 20.2},
+    "baz": {"name": "Baz", "description": None, "price": 50.2, "tax": 10.5, "tags": []},
+}
+
+@app.get("/items/{item_id}", response_model=Item, response_model_exclude_unset=True)
+async def read_item(item_id: str):
+    return items[item_id]
+```
+y esos valores predeterminados no se incluirán en la respuesta, solo los valores realmente establecidos.
+
+Entonces, si envía una solicitud a esa operación de ruta para el elemento con ID foo, la respuesta (sin incluir los valores predeterminados) será:
+```
+{
+    "name": "Foo",
+    "price": 50.2
+}
+```
+
+FastAPI usa .dict() del modelo Pydantic con su parámetro include_unset para lograr esto.
+También puedes usar:
+- response_model_exclude_defaults=Verdadero
+- response_model_exclude_none=Verdadero
+
+como se describe en los documentos de Pydantic para include_defaults y exclude_none.
+
+### Datos con valores para campos con valores predeterminados
+Pero si sus datos tienen valores para los campos del modelo con valores predeterminados, como el elemento con la barra de identificación:
+```
+{
+    "name": "Bar",
+    "description": "The bartenders",
+    "price": 62,
+    "tax": 20.2
+}
+```
+
+Ellos serán incluidos en la respuesta.
+
+### Datos con los mismos valores que los predeterminados
+Si los datos tienen los mismos valores que los predeterminados, como el elemento con ID baz:
+```
+{
+    "name": "Baz",
+    "description": None,
+    "price": 50.2,
+    "tax": 10.5,
+    "tags": []
+}
+```
 
 # new
