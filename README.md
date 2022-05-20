@@ -2522,8 +2522,8 @@ Entonces, si envía una solicitud a esa operación de ruta para el elemento con 
 
 FastAPI usa .dict() del modelo Pydantic con su parámetro include_unset para lograr esto.
 También puedes usar:
-- response_model_exclude_defaults=Verdadero
-- response_model_exclude_none=Verdadero
+- response_model_exclude_defaults=True
+- response_model_exclude_none=True
 
 como se describe en los documentos de Pydantic para include_defaults y exclude_none.
 
@@ -2551,5 +2551,98 @@ Si los datos tienen los mismos valores que los predeterminados, como el elemento
     "tags": []
 }
 ```
+
+FastAPI es lo suficientemente inteligente (en realidad, Pydantic es lo suficientemente inteligente) para darse cuenta de que, aunque la descripción, el impuesto y las etiquetas tienen los mismos valores que los valores predeterminados, se establecieron explícitamente (en lugar de tomarlos de los valores predeterminados).
+
+Por lo tanto, se incluirán en la respuesta JSON.
+
+### `response_model_include` y `response_model_exclude`
+También puede utilizar los parámetros del decorador de la operación de ruta de acceso response_model_include y response_model_exclude.
+Toman un conjunto de str con el nombre de los atributos a incluir (omitiendo el resto) o a excluir (incluyendo el resto).
+Esto se puede usar como un atajo rápido si solo tiene un modelo de Pydantic y desea eliminar algunos datos de la salida.
+
+Pero aún se recomienda usar las ideas anteriores, usando varias clases, en lugar de estos parámetros.
+Esto se debe a que el esquema JSON generado en OpenAPI de su aplicación (y los documentos) seguirá siendo el del modelo completo, incluso si usa response_model_include o response_model_exclude para omitir algunos atributos.
+Esto también se aplica a response_model_by_alias que funciona de manera similar.
+
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Union[str, None] = None
+    price: float
+    tax: float = 10.5
+
+items = {
+    "foo": {"name": "Foo", "price": 50.2},
+    "bar": {"name": "Bar", "description": "The Bar fighters", "price": 62, "tax": 20.2},
+    "baz": {
+        "name": "Baz",
+        "description": "There goes my baz",
+        "price": 50.2,
+        "tax": 10.5,
+    },
+}
+
+@app.get(
+    "/items/{item_id}/name",
+    response_model=Item,
+    response_model_include={"name", "description"},
+)
+async def read_item_name(item_id: str):
+    return items[item_id]
+
+@app.get("/items/{item_id}/public", response_model=Item, response_model_exclude={"tax"})
+async def read_item_public_data(item_id: str):
+    return items[item_id]
+```
+
+### Uso de `list` en lugar de `set`
+Si olvida usar un `set` y usa una `list` o una `tuple` en su lugar, FastAPI aún lo convertirá en un `set` y funcionará correctamente:
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Union[str, None] = None
+    price: float
+    tax: float = 10.5
+
+items = {
+    "foo": {"name": "Foo", "price": 50.2},
+    "bar": {"name": "Bar", "description": "The Bar fighters", "price": 62, "tax": 20.2},
+    "baz": {
+        "name": "Baz",
+        "description": "There goes my baz",
+        "price": 50.2,
+        "tax": 10.5,
+    },
+}
+
+@app.get(
+    "/items/{item_id}/name",
+    response_model=Item,
+    response_model_include=["name", "description"],
+)
+async def read_item_name(item_id: str):
+    return items[item_id]
+
+@app.get("/items/{item_id}/public", response_model=Item, response_model_exclude=["tax"])
+async def read_item_public_data(item_id: str):
+    return items[item_id]
+```
+
+## Resumen
+Utilice el parámetro del decorador de la operación de ruta para definir modelos de respuesta y, especialmente, para garantizar que se filtren los datos privados.
+Use response_model_exclude_unset para devolver solo los valores establecidos explícitamente.
 
 # new
