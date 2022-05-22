@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Query, Path
+from fastapi import Body, FastAPI, Query, Path, status
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 from fastapi.responses import FileResponse
 import uvicorn
@@ -13,10 +13,10 @@ class ModelName(str, Enum):
     lenet = "lenet"
 
 class Item(BaseModel):
-    name: str
-    description: Optional[str] = None
-    price: float
-    tax: Optional[float] = None
+    name: str = Field(..., min_length=3)
+    description: Optional[str] = Field(None, min_length=3)
+    price: float = Field(..., gt=0)
+    tax: Optional[float] = Field(None, gt=0)
 
 @app.get("/")
 async def read_root(name: Optional[str] = Query(None, min_length=4)):
@@ -38,7 +38,7 @@ async def get_models(model_name: ModelName):
 async def read_item(*, item_id: int = Path(..., title="ID of an item", gt=0, le=1000), q: str):
     return {"item_id": item_id}
 
-@app.post("/items")
+@app.post("/items", status_code=status.HTTP_201_CREATED)
 async def post_item(item: Item):
     if item.tax:
         item_dict = item.dict()
