@@ -2696,4 +2696,351 @@ async def create_user(user_in: UserIn):
     return user_saved
 ```
 
+## Sobre `**user_in.dict()`
+### `.dict()` de Pydantic
+user_in es un modelo Pydantic de la clase UserIn.
+Los modelos Pydantic tienen un método .dict() que devuelve un dict con los datos del modelo.
+Entonces, si creamos un objeto Pydantic user_in como:
+```
+user_in = UserIn(username="john", password="secret", email="john.doe@example.com")
+```
+
+y despues llamamos:
+```
+user_dict = user_in.dict()
+```
+
+ahora tenemos un dict con los datos en la variable user_dict (es un dict en lugar de un objeto de modelo Pydantic).
+Y si llamamos:
+```
+print(user_dict)
+```
+
+obtendríamos un dictado de Python con:
+```
+{
+    'username': 'john',
+    'password': 'secret',
+    'email': 'john.doe@example.com',
+    'full_name': None,
+}
+```
+
+### Desenvolviendo un dict
+Si tomamos un dict como user_dict y lo pasamos a una función (o clase) con **user_dict, Python lo "desenvolverá". Pasará las claves y los valores de user_dict directamente como argumentos clave-valor.
+Entonces, continuando con el user_dict de arriba, escribiendo:
+```
+UserInDB(**user_dict)
+```
+
+Daría como resultado algo equivalente a:
+```
+UserInDB(
+    username="john",
+    password="secret",
+    email="john.doe@example.com",
+    full_name=None,
+)
+```
+
+O más exactamente, usando user_dict directamente, con cualquier contenido que pueda tener en el futuro:
+```
+UserInDB(
+    username = user_dict["username"],
+    password = user_dict["password"],
+    email = user_dict["email"],
+    full_name = user_dict["full_name"],
+)
+```
+
+### Un modelo Pydantic a partir del contenido de otro
+Como en el ejemplo anterior, obtuvimos user_dict de user_in.dict(), este código:
+```
+user_dict = user_in.dict()
+UserInDB(**user_dict)
+```
+
+sería equivalente a:
+```
+UserInDB(**user_in.dict())
+```
+
+... porque user_in.dict() es un dict, y luego hacemos que Python lo "desenvuelva" pasándolo a UserInDB con **.
+Entonces, obtenemos un modelo Pydantic de los datos en otro modelo Pydantic
+
+### Desempaquetar un dictado y palabras clave adicionales
+Y luego agregar el argumento de palabra clave adicional hash_password=hashed_password, como en:
+```
+UserInDB(**user_in.dict(), hashed_password=hashed_password)
+```
+
+... termina siendo como:
+```
+UserInDB(
+    username = user_dict["username"],
+    password = user_dict["password"],
+    email = user_dict["email"],
+    full_name = user_dict["full_name"],
+    hashed_password = hashed_password,
+)
+```
+
+Las funciones adicionales de soporte son solo para demostrar un posible flujo de datos, pero, por supuesto, no brindan ninguna seguridad real.
+
+## Reducir la duplicación
+Reducir la duplicación de código es una de las ideas centrales de FastAPI.
+A medida que la duplicación de código aumenta las posibilidades de errores, problemas de seguridad, problemas de desincronización de código (cuando actualiza en un lugar pero no en los demás), etc.
+Y todos estos modelos comparten una gran cantidad de datos y duplican nombres y tipos de atributos.
+Podríamos hacerlo mejor.
+Podemos declarar un modelo UserBase que sirva como base para nuestros otros modelos. Y luego podemos hacer subclases de ese modelo que heredan sus atributos (declaraciones de tipo, validación, etc.).
+Toda la conversión de datos, validación, documentación, etc. seguirá funcionando con normalidad.
+De esa manera, podemos declarar solo las diferencias entre los modelos (con contraseña de texto sin formato, con hash_password y sin contraseña):
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel, EmailStr
+
+app = FastAPI()
+
+class UserBase(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserIn(UserBase):
+    password: str
+
+class UserOut(UserBase):
+    pass
+
+class UserInDB(UserBase):
+    hashed_password: str
+
+def fake_password_hasher(raw_password: str):
+    return "supersecret" + raw_password
+
+def fake_save_user(user_in: UserIn):
+    hashed_password = fake_password_hasher(user_in.password)
+    user_in_db = UserInDB(**user_in.dict(), hashed_password=hashed_password)
+    print("User saved! ..not really")
+    return user_in_db
+
+@app.post("/user/", response_model=UserOut)
+async def create_user(user_in: UserIn):
+    user_saved = fake_save_user(user_in)
+    return user_saved
+```
+
+## `Union` o `anyOf`
+Puede declarar que una respuesta sea la unión de dos tipos, es decir, que la respuesta sea cualquiera de los dos.
+Se definirá en OpenAPI con anyOf.
+Para hacer eso, use la escritura de sugerencias de tipo estándar de Python. Unión:
+
+### Nota
+Al definir una Unión, incluya primero el tipo más específico, seguido del tipo menos específico. En el siguiente ejemplo, el PlaneItem más específico viene antes de CarItem en Union[PlaneItem, CarItem].
+
+```
+from typing import Union
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class BaseItem(BaseModel):
+    description: str
+    type: str
+
+class CarItem(BaseItem):
+    type = "car"
+
+class PlaneItem(BaseItem):
+    type = "plane"
+    size: int
+
+items = {
+    "item1": {"description": "All my friends drive a low rider", "type": "car"},
+    "item2": {
+        "description": "Music is my aeroplane, it's my aeroplane",
+        "type": "plane",
+        "size": 5,
+    },
+}
+
+
+@app.get("/items/{item_id}", response_model=Union[PlaneItem, CarItem])
+async def read_item(item_id: str):
+    return items[item_id]
+```
+
+## Resumen
+Use múltiples modelos de Pydantic y herede libremente para cada caso.
+No necesita tener un solo modelo de datos por entidad si esa entidad debe poder tener diferentes "estados". Como en el caso del usuario "entidad" con un estado que incluye contraseña, contraseña_hash y sin contraseña.
+
+# Response Status Code
+De la misma manera que puede especificar un modelo de respuesta, también puede declarar el código de estado HTTP utilizado para la respuesta con el parámetro status_code  en cualquiera de las operaciones de ruta:
+
+- @aplicación.get()
+- @aplicación.post()
+- @aplicación.put()
+- @aplicación.delete()
+- etc.
+
+```
+from fastapi import FastAPI
+
+app = FastAPI()
+
+
+@app.post("/items/", status_code=201)
+async def create_item(name: str):
+    return {"name": name}
+```
+
+Tenga en cuenta que status_code es un parámetro del método "decorador" (obtener, publicar, etc.). No de su función de operación de ruta, como todos los parámetros y el cuerpo.
+
+El parámetro status_code recibe un número con el código de estado HTTP
+status_code alternativamente también puede recibir un IntEnum, como http.HTTPStatus de Python.
+
+Algunos códigos de respuesta (consulte la siguiente sección) indican que la respuesta no tiene cuerpo.
+FastAPI lo sabe y producirá documentos de OpenAPI que indiquen que no hay un cuerpo de respuesta.
+
+## Acerca de los códigos de estado HTTP
+En HTTP, envía un código de estado numérico de 3 dígitos como parte de la respuesta.
+Estos códigos de estado tienen asociado un nombre para reconocerlos, pero lo importante es el número.
+En breve:
+
+- 100 y más son para "Información". Rara vez los usas directamente. Las respuestas con estos códigos de estado no pueden tener cuerpo.
+- 200 y más son para respuestas "Exitosas". Estos son los que más usarías.
+- - 200 es el código de estado predeterminado, lo que significa que todo estaba "OK".
+- - Otro ejemplo sería 201, "Creado". Se usa comúnmente después de crear un nuevo registro en la base de datos.
+- - Un caso especial es 204, "Sin contenido". Esta respuesta se utiliza cuando no hay contenido que devolver al cliente, por lo que la respuesta no debe tener cuerpo.
+- 300 y superiores son para "Redireccionamiento". Las respuestas con estos códigos de estado pueden o no tener cuerpo, excepto la 304, "No modificada", que no debe tenerlo.
+- 400 y superiores son para respuestas de "Error de cliente". Estos son el segundo tipo que probablemente usaría más.
+- - Un ejemplo es 404, para una respuesta "No encontrado".
+- - Para errores genéricos del cliente, puede usar 400.
+- 500 y superiores son para errores del servidor. Casi nunca los usas directamente. Cuando algo sale mal en alguna parte del código de su aplicación o servidor, devolverá automáticamente uno de estos códigos de estado.
+
+## Atajo para recordar los nombres
+Veamos de nuevo el ejemplo anterior:
+```
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/items/", status_code=201)
+async def create_item(name: str):
+    return {"name": name}
+```
+
+201 es el código de estado para "Creado".
+Pero no tienes que memorizar lo que significa cada uno de estos códigos.
+Puede utilizar las variables de conveniencia de fastapi.status.
+```
+from fastapi import FastAPI, status
+
+app = FastAPI()
+
+@app.post("/items/", status_code=status.HTTP_201_CREATED)
+async def create_item(name: str):
+    return {"name": name}
+```
+
+Son solo una conveniencia, tienen el mismo número, pero de esa manera puede usar el autocompletado del editor para encontrarlos.
+
+# Form Data
+Cuando necesite recibir campos de formulario en lugar de JSON, puede usar Form.
+Para usar formularios, primero instale python-multipart.
+Eje. pip install python-multipart.
+
+## Importar Form
+Import Form from fastapi:
+```
+from fastapi import FastAPI, Form
+
+app = FastAPI()
+
+@app.post("/login/")
+async def login(username: str = Form(), password: str = Form()):
+    return {"username": username}
+```
+
+## Define Form parameters
+Cree parámetros de formulario de la misma manera que lo haría para el cuerpo o la consulta:
+```
+async def login(username: str = Form(), password: str = Form()):
+```
+
+Por ejemplo, en una de las formas en que se puede usar la especificación OAuth2 (llamada "flujo de contraseña"), se requiere enviar un nombre de usuario y una contraseña como campos de formulario.
+La especificación requiere que los campos se nombren exactamente como nombre de usuario y contraseña, y que se envíen como campos de formulario, no como JSON.
+Con Formulario puede declarar los mismos metadatos y validación que con Cuerpo (y Consulta, Ruta, Cookie).
+
+Para declarar cuerpos de formulario, debe usar Form explícitamente, porque sin él, los parámetros se interpretarían como parámetros de consulta o parámetros de cuerpo (JSON).
+
+## Acerca de "Form Fields"
+La forma en que los formularios HTML (<formulario></formulario>) envían los datos al servidor normalmente usa una codificación "especial" para esos datos, es diferente de JSON.
+FastAPI se asegurará de leer esos datos desde el lugar correcto en lugar de JSON.
+
+Los datos de los formularios normalmente se codifican utilizando el "tipo de medio" application/x-www-form-urlencoded.
+Pero cuando el formulario incluye archivos, se codifica como multipart/form-data. En el próximo capítulo leerá sobre el manejo de archivos.
+Si desea leer más sobre estas codificaciones y campos de formulario, diríjase a los documentos web de MDN para POST.
+
+# Manejando Errores
+Hay muchas situaciones en las que necesita notificar un error a un cliente que está utilizando su API.
+Este cliente podría ser un navegador con una interfaz, un código de otra persona, un dispositivo IoT, etc.
+Podría necesitar decirle al cliente que:
+- El cliente no tiene suficientes privilegios para esa operación.
+- El cliente no tiene acceso a ese recurso.
+- El elemento al que el cliente intentaba acceder no existe.
+- etc.
+
+En estos casos, normalmente devolvería un código de estado HTTP en el rango de 400 (de 400 a 499).
+Esto es similar a los 200 códigos de estado HTTP (del 200 al 299). Esos códigos de estado "200" significan que de alguna manera hubo un "éxito" en la solicitud.
+Los códigos de estado en el rango 400 significan que hubo un error del cliente.
+¿Recuerdas todos esos errores (y chistes) de "404 no encontrado"?
+
+## Use HTTPException
+Para devolver respuestas HTTP con errores al cliente, utiliza HTTPException.
+
+### Importar HTTPException
+```
+from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+
+items = {"foo": "The Foo Wrestlers"}
+
+@app.get("/items/{item_id}")
+async def read_item(item_id: str):
+    if item_id not in items:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"item": items[item_id]}
+```
+
+## Genera una HTTPException en tu código
+HTTPException es una excepción normal de Python con datos adicionales relevantes para las API.
+Debido a que es una excepción de Python, no lo devuelve, lo genera.
+Esto también significa que si está dentro de una función de utilidad a la que está llamando dentro de su función de operación de ruta, y genera la HTTPException desde dentro de esa función de utilidad, no ejecutará el resto del código en la función de operación de ruta, terminará esa solicitud de inmediato y enviará el error HTTP de HTTPException al cliente.
+El beneficio de generar una excepción sobre la devolución de un valor será más evidente en la sección sobre dependencias y seguridad.
+En este ejemplo, cuando el cliente solicita un artículo con una ID que no existe, genera una excepción con un código de estado de 404:
+```
+raise HTTPException(status_code=404, detail="Item not found")
+```
+
+## La respuesta resultante
+Si el cliente solicita http://example.com/items/foo (un item_id "foo"), ese cliente recibirá un código de estado HTTP de 200 y una respuesta JSON de:
+```
+{
+  "item": "The Foo Wrestlers"
+}
+```
+
+Pero si el cliente solicita http://example.com/items/bar (una "barra" item_id inexistente), ese cliente recibirá un código de estado HTTP de 404 (el error "no encontrado") y una respuesta JSON de:
+```
+{
+  "detail": "Item not found"
+}
+```
+
+# Path Operation Configuration
+
 # new
