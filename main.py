@@ -1,11 +1,14 @@
-from fastapi import Body, FastAPI, Query, Path, status
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Union
+from fastapi import Body, Depends, FastAPI, Query, Path, status
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel, Field, Required
 from enum import Enum
 from fastapi.responses import FileResponse
 import uvicorn
 
 app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 class ModelName(str, Enum):
     alexnet = "alexnet"
@@ -13,13 +16,13 @@ class ModelName(str, Enum):
     lenet = "lenet"
 
 class Item(BaseModel):
-    name: str = Field(..., min_length=3)
-    description: Optional[str] = Field(None, min_length=3)
-    price: float = Field(..., gt=0)
-    tax: Optional[float] = Field(None, gt=0)
+    name: str = Field(min_length=3)
+    description: Union[str, None] = Field(default=None, min_length=3)
+    price: float = Field(gt=0)
+    tax: Union[float, None] = Field(default=None, gt=0)
 
 @app.get("/")
-async def read_root(name: Optional[str] = Query(None, min_length=4)):
+async def read_root(name: Union[str, None] = Query(default=None, min_length=4)):
     if name:
         return {"mensaje": f"Hola {name}. Atte: Christos"}
     return {"mensaje": "Hola malditos. Atte: Christos"}
@@ -51,8 +54,8 @@ async def get_code():
     return FileResponse("./main.py")
 
 @app.get("/documentation")
-async def get_documentation():
-    return FileResponse("./README.md")
+async def get_documentation(token: str = Depends(oauth2_scheme)):
+    return {"token": token}
 
 # Descomentar para depurar
 # uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -3041,6 +3041,802 @@ Pero si el cliente solicita http://example.com/items/bar (una "barra" item_id in
 }
 ```
 
-# Path Operation Configuration
+# Dependencies - Primeros pasos
+FastAPI tiene un sistema de inyección de dependencia muy poderoso pero intuitivo.
+Está diseñado para ser muy simple de usar y para que sea muy fácil para cualquier desarrollador integrar otros componentes con FastAPI.
+
+## ¿Qué es la "inyección de dependencia"?
+"Inyección de dependencia" significa, en programación, que hay una manera para que su código (en este caso, sus funciones de operación de ruta) declare las cosas que requiere para funcionar y usar: "dependencias".
+
+Y luego, ese sistema (en este caso, FastAPI) se encargará de hacer lo que sea necesario para proporcionarle a su código las dependencias necesarias ("inyectar" las dependencias).
+
+Esto es muy útil cuando necesitas:
+
+- Tener lógica compartida (la misma lógica de código una y otra vez).
+- Compartir conexiones de bases de datos.
+- Hacer cumplir los requisitos de seguridad, autenticación, roles, etc.
+- Y muchas otras cosas...
+
+Todo esto, mientras minimiza la repetición de código.
+
+## Primeros pasos
+Veamos un ejemplo muy sencillo. Será tan sencillo que no es muy útil, por ahora.
+Pero de esta manera podemos centrarnos en cómo funciona el sistema de inyección de dependencia.
+
+## Crear una dependencia, o "dependable"
+Primero centrémonos en la dependencia.
+Es solo una función que puede tomar todos los mismos parámetros que una función de operación de ruta puede tomar:
+```
+async def common_parameters(
+    q: Union[str, None] = None, skip: int = 0, limit: int = 100
+):
+    return {"q": q, "skip": skip, "limit": limit}
+```
+
+Eso es todo.
+
+### 2 lineas.
+Y tiene la misma forma y estructura que tienen todas sus funciones de operación de ruta.
+Puede considerarlo como una función de operación de ruta sin el "decorador" (sin @app.get("/some-path")).
+Y puede devolver lo que quieras.
+En este caso, esta dependencia espera:
+- Un parámetro de consulta opcional q que es una cadena.
+- Un salto de parámetro de consulta opcional que es un int y, de forma predeterminada, es 0.
+- Un límite de parámetro de consulta opcional que es un int y, de forma predeterminada, es 100.
+
+Y luego simplemente devuelve un dictado que contiene esos valores.
+
+## Importar `Depends`
+```
+from fastapi import Depends, FastAPI
+```
+
+## Declarar la dependencia, en el "dependiente"
+```
+async def read_items(commons: dict = Depends(common_parameters)):
+```
+
+Aunque usa Depends en los parámetros de su función de la misma manera que usa Body, Query, etc., Depends funciona de manera un poco diferente.
+Solo le das Depende de un solo parámetro.
+Este parámetro debe ser algo así como una función.
+Y esa función toma parámetros de la misma manera que lo hacen las funciones de operación de ruta.
+
+Cada vez que llega una nueva solicitud, FastAPI se encargará de:
+Llamar a su función de dependencia ("dependable") con los parámetros correctos.
+Obtenga el resultado de su función.
+Asigne ese resultado al parámetro en su función de operación de ruta.
+
+De esta manera, escribe código compartido una vez y FastAPI se encarga de llamarlo para sus operaciones de ruta.
+
+## Uso sencillo
+Si lo observa, las funciones de operación de ruta se declaran para usarse siempre que una ruta y una operación coincidan, y luego FastAPI se encarga de llamar a la función con los parámetros correctos, extrayendo los datos de la solicitud.
+En realidad, todos (o la mayoría) de los marcos web funcionan de la misma manera.
+Nunca llamas a esas funciones directamente. Son llamados por su marco (en este caso, FastAPI).
+Con el sistema de Inyección de dependencia, también puede decirle a FastAPI que su función de operación de ruta también "depende" de algo más que debe ejecutarse antes de su función de operación de ruta, y FastAPI se encargará de ejecutarla e "inyectar" los resultados.
+Otros términos comunes para esta misma idea de "inyección de dependencia" son:
+
+- resources
+- providers
+- services
+- injectables
+- components
+
+# Clases como Dependencies
+Antes de profundizar en el sistema de inyección de dependencia, actualicemos el ejemplo anterior.
+
+## Un `dict` del ejemplo anterior.
+En el ejemplo anterior, devolvíamos un dictado de nuestra dependencia ("dependable"):
+```
+async def common_parameters(
+    q: Union[str, None] = None, skip: int = 0, limit: int = 100
+):
+    return {"q": q, "skip": skip, "limit": limit}
+```
+
+Pero luego obtenemos un dict en los parámetros comunes de la función de operación de ruta.
+Y sabemos que los editores no pueden proporcionar mucho soporte (como finalización) para dictados, porque no pueden conocer sus claves y tipos de valores.
+Podemos hacerlo mejor...
+
+## Qué hace una dependencia
+Hasta ahora has visto dependencias declaradas como funciones.
+Pero esa no es la única forma de declarar dependencias (aunque probablemente sea la más común).
+El factor clave es que una dependencia debe ser "invocable".
+Un "invocable" en Python es cualquier cosa que Python pueda "llamar" como una función.
+Entonces, si tiene un objeto algo (que podría no ser una función) y puede "llamarlo" (ejecutarlo) como:
+```
+something()
+```
+
+o
+```
+something(some_argument, some_keyword_argument="foo")
+```
+
+entonces es un "invocable".
+
+## Clases como dependencias
+Puede notar que para crear una instancia de una clase de Python, usa la misma sintaxis.
+Por ejemplo:
+```
+class Cat:
+    def __init__(self, name: str):
+        self.name = name
+
+
+fluffy = Cat(name="Mr Fluffy")
+```
+
+En este caso, fluffy es una instancia de la clase Cat.
+Y para crear fluffy, estás "llamando" a Cat.
+Entonces, una clase de Python también es invocable.
+Luego, en FastAPI, podría usar una clase de Python como dependencia.
+Lo que FastAPI realmente verifica es que es un "invocable" (función, clase o cualquier otra cosa) y los parámetros definidos.
+Si pasa un "invocable" como una dependencia en FastAPI, analizará los parámetros para ese "invocable" y los procesará de la misma manera que los parámetros para una función de operación de ruta. Incluidas las subdependencias.
+Eso también se aplica a los invocables sin ningún parámetro. Lo mismo que sería para las funciones de operación de ruta sin parámetros.
+Luego, podemos cambiar la dependencia "dependable" common_parameters de arriba a la clase CommonQueryParams:
+```
+class CommonQueryParams:
+    def __init__(self, q: Union[str, None] = None, skip: int = 0, limit: int = 100):
+        self.q = q
+        self.skip = skip
+        self.limit = limit
+```
+
+Preste atención al método __init__ utilizado para crear la instancia de la clase:
+```
+from typing import Union
+from fastapi import Depends, FastAPI
+
+app = FastAPI()
+
+fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+
+class CommonQueryParams:
+    def __init__(self, q: Union[str, None] = None, skip: int = 0, limit: int = 100):
+        self.q = q
+        self.skip = skip
+        self.limit = limit
+
+@app.get("/items/")
+async def read_items(commons: CommonQueryParams = Depends(CommonQueryParams)):
+    response = {}
+    if commons.q:
+        response.update({"q": commons.q})
+    items = fake_items_db[commons.skip : commons.skip + commons.limit]
+    response.update({"items": items})
+    return response
+```
+
+...tiene los mismos parámetros que nuestros common_parameters anteriores:
+```
+from typing import Union
+from fastapi import Depends, FastAPI
+
+app = FastAPI()
+
+async def common_parameters(
+    q: Union[str, None] = None, skip: int = 0, limit: int = 100
+):
+    return {"q": q, "skip": skip, "limit": limit}
+
+@app.get("/items/")
+async def read_items(commons: dict = Depends(common_parameters)):
+    return commons
+
+@app.get("/users/")
+async def read_users(commons: dict = Depends(common_parameters)):
+    return commons
+```
+
+Esos parámetros son los que usará FastAPI para "resolver" la dependencia.
+En ambos casos, tendrá:
+
+- Un parámetro de consulta q opcional que es una cadena.
+- Un parámetro de consulta de omisión que es un int, con un valor predeterminado de 0.
+- Un parámetro de consulta de límite que es un int, con un valor predeterminado de 100.
+En ambos casos los datos serán convertidos, validados, documentados en el esquema OpenAPI, etc.
+
+## Usalo
+Ahora puede declarar su dependencia usando esta clase.
+```
+from typing import Union
+from fastapi import Depends, FastAPI
+
+app = FastAPI()
+
+fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+
+class CommonQueryParams:
+    def __init__(self, q: Union[str, None] = None, skip: int = 0, limit: int = 100):
+        self.q = q
+        self.skip = skip
+        self.limit = limit
+
+@app.get("/items/")
+async def read_items(commons: CommonQueryParams = Depends(CommonQueryParams)):
+    response = {}
+    if commons.q:
+        response.update({"q": commons.q})
+    items = fake_items_db[commons.skip : commons.skip + commons.limit]
+    response.update({"items": items})
+    return response
+```
+
+FastAPI llama a la clase CommonQueryParams. Esto crea una "instancia" de esa clase y la instancia se pasará como parámetro común a su función.
+
+## Type annotation vs Depends
+Observe cómo escribimos CommonQueryParams dos veces en el código anterior:
+```
+commons: CommonQueryParams = Depends(CommonQueryParams)
+```
+
+Los últimos CommonQueryParams, en:
+```
+... = Depends(CommonQueryParams)
+```
+
+... es lo que FastAPI realmente usará para saber cuál es la dependencia.
+De ahí es que FastAPI extraerá los parámetros declarados y eso es lo que realmente llamará FastAPI.
+
+En este caso, el primer CommonQueryParams, en:
+```
+commons: CommonQueryParams = Depends(CommonQueryParams)
+```
+
+...no tiene ningún significado especial para FastAPI. FastAPI no lo usará para conversión de datos, validación, etc. (ya que está usando = Depends(CommonQueryParams) para eso).
+
+De hecho, podrías escribir simplemente:
+```
+commons = Depends(CommonQueryParams)
+```
+
+## Shortcut
+FastAPI proporciona un atajo para estos casos, en los que la dependencia es específicamente una clase a la que FastAPI "llamará" para crear una instancia de la propia clase.
+
+Para esos casos específicos, puede hacer lo siguiente:
+
+En lugar de escribir:
+```
+commons: CommonQueryParams = Depends(CommonQueryParams)
+```
+
+...usted escribe:
+```
+commons: CommonQueryParams = Depends()
+```
+
+Declaras la dependencia como el tipo del parámetro, y usas Depends() como su valor "predeterminado" (que está después del =) para el parámetro de esa función, sin ningún parámetro en Depends(), en lugar de tener que escribir la clase completa de nuevo dentro de Depends(CommonQueryParams).
+El mismo ejemplo se vería así:
+```
+async def read_items(commons: CommonQueryParams = Depends()):
+```
+
+
+...y FastAPI sabrá qué hacer.
+
+# Sub-dependencias
+Puede crear dependencias que tengan subdependencias.
+Pueden ser tan profundos como necesites que sean.
+FastAPI se encargará de solucionarlos.
+
+## Primera dependencia "dependable"
+Podría crear una primera dependencia ("dependable") como:
+```
+def query_extractor(q: Union[str, None] = None):
+    return q
+```
+
+Declara un parámetro de consulta opcional q como str, y luego simplemente lo devuelve.
+Esto es bastante simple (no muy útil), pero nos ayudará a centrarnos en cómo funcionan las subdependencias.
+
+## Segunda dependencia, "dependable" y "dependant"
+Luego puede crear otra función de dependencia (una "dependable") que al mismo tiempo declara una dependencia propia (por lo que también es un "dependiente"):
+```
+def query_or_cookie_extractor(
+    q: str = Depends(query_extractor),
+    last_query: Union[str, None] = Cookie(default=None),
+):
+    if not q:
+        return last_query
+    return q
+```
+
+Centrémonos en los parámetros declarados:
+
+- Aunque esta función es una dependencia ("dependable") en sí misma, también declara otra dependencia (que "depende" de otra cosa).
+- - Depende del query_extractor, y asigna el valor devuelto por este al parámetro q.
+- También declara una cookie last_query opcional, como str.
+- - Si el usuario no proporcionó ninguna consulta q, usamos la última consulta utilizada, que guardamos antes en una cookie.
+
+## Usa la dependencia
+Entonces podemos usar la dependencia con:
+```
+async def read_query(query_or_default: str = Depends(query_or_cookie_extractor)):
+```
+
+## Usar la misma dependencia varias veces
+Si una de sus dependencias se declara varias veces para la misma operación de ruta, por ejemplo, varias dependencias tienen una subdependencia común, FastAPI sabrá llamar a esa subdependencia solo una vez por solicitud.
+Y guardará el valor devuelto en un "caché" y lo pasará a todos los "dependientes" que lo necesiten en esa solicitud específica, en lugar de llamar a la dependencia varias veces para la misma solicitud.
+En un escenario avanzado en el que sabe que necesita llamar a la dependencia en cada paso (posiblemente varias veces) en la misma solicitud en lugar de usar el valor "almacenado en caché", puede establecer el parámetro use_cache=False al usar Depends:
+```
+async def needy_dependency(fresh_value: str = Depends(get_value, use_cache=False)):
+    return {"fresh_value": fresh_value}
+```
+
+## Resumen
+Aparte de todas las palabras elegantes que se usan aquí, el sistema de inyección de dependencia es bastante simple.
+Solo funciones que tienen el mismo aspecto que las funciones de operación de ruta.
+Pero aún así, es muy poderoso y le permite declarar "gráficos" (árboles) de dependencia arbitrariamente anidados.
+
+# Dependencias en path operation decorators
+En algunos casos, realmente no necesita el valor de retorno de una dependencia dentro de su función de operación de ruta.
+O la dependencia no devuelve un valor.
+Pero aún necesita que se ejecute / resuelva.
+Para esos casos, en lugar de declarar un parámetro de función de operación de ruta con Depends, puede agregar una lista de dependencias al decorador de operación de ruta.
+
+## Agregar dependencias a los path operation decorator
+El decorador de la operación de ruta recibe un argumento opcional de dependencias.
+Debería ser una lista de Depends():
+```
+from fastapi import Depends, FastAPI, Header, HTTPException
+
+app = FastAPI()
+
+async def verify_token(x_token: str = Header()):
+    if x_token != "fake-super-secret-token":
+        raise HTTPException(status_code=400, detail="X-Token header invalid")
+
+async def verify_key(x_key: str = Header()):
+    if x_key != "fake-super-secret-key":
+        raise HTTPException(status_code=400, detail="X-Key header invalid")
+    return x_key
+
+@app.get("/items/", dependencies=[Depends(verify_token), Depends(verify_key)])
+async def read_items():
+    return [{"item": "Foo"}, {"item": "Bar"}]
+```
+
+Estas dependencias se ejecutarán/resolverán de la misma manera que las dependencias normales. Pero su valor (si devuelven alguno) no se pasará a su función de operación de ruta.
+
+## Errores de dependencias y valores devueltos
+Puede usar las mismas funciones de dependencia que usa normalmente.
+
+# Dependencias Globales
+Para algunos tipos de aplicaciones, es posible que desee agregar dependencias a toda la aplicación.
+De forma similar a como puede agregar dependencias a los decoradores de operaciones de ruta, puede agregarlos a la aplicación FastAPI.
+En ese caso, se aplicarán a todas las operaciones de ruta en la aplicación:
+```
+from fastapi import Depends, FastAPI, Header, HTTPException
+
+async def verify_token(x_token: str = Header()):
+    if x_token != "fake-super-secret-token":
+        raise HTTPException(status_code=400, detail="X-Token header invalid")
+
+async def verify_key(x_key: str = Header()):
+    if x_key != "fake-super-secret-key":
+        raise HTTPException(status_code=400, detail="X-Key header invalid")
+    return x_key
+
+app = FastAPI(dependencies=[Depends(verify_token), Depends(verify_key)])
+
+@app.get("/items/")
+async def read_items():
+    return [{"item": "Portal Gun"}, {"item": "Plumbus"}]
+
+@app.get("/users/")
+async def read_users():
+    return [{"username": "Rick"}, {"username": "Morty"}]
+```
+
+Y todas las ideas de la sección sobre cómo agregar dependencias a los decoradores de operaciones de ruta aún se aplican, pero en este caso, a todas las operaciones de ruta en la aplicación.
+
+# Introducción a la seguridad
+Hay muchas formas de manejar la seguridad, la autenticación y la autorización.
+Y normalmente es un tema complejo y "difícil".
+En muchos marcos y sistemas, solo manejar la seguridad y la autenticación requiere una gran cantidad de esfuerzo y código (en muchos casos, puede ser el 50% o más de todo el código escrito).
+FastAPI proporciona varias herramientas para ayudarlo a lidiar con la seguridad de manera fácil, rápida y estándar, sin tener que estudiar y aprender todas las especificaciones de seguridad.
+Pero primero, revisemos algunos pequeños conceptos.
+
+## OAuth2
+OAuth2 es una especificación que define varias formas de manejar la autenticación y la autorización.
+Es una especificación bastante extensa y cubre varios casos de uso complejos.
+Incluye formas de autenticación mediante un "tercero".
+Eso es lo que usan debajo todos los sistemas con "iniciar sesión con Facebook, Google, Twitter, GitHub".
+
+## OAuth 1
+Existía un OAuth 1, que es muy diferente al OAuth2, y más complejo, ya que incluía directamente especificaciones sobre cómo encriptar la comunicación.
+No es muy popular o utilizado hoy en día.
+OAuth2 no especifica cómo cifrar la comunicación, espera que su aplicación se sirva con HTTPS.
+
+## OpenID Connect
+OpenID Connect es otra especificación, basada en OAuth2.
+Simplemente extiende OAuth2 especificando algunas cosas que son relativamente ambiguas en OAuth2, para intentar hacerlo más interoperable.
+Por ejemplo, el inicio de sesión de Google usa OpenID Connect (que debajo usa OAuth2).
+Pero el inicio de sesión de Facebook no es compatible con OpenID Connect. Tiene su propio sabor de OAuth2.
+
+## OpenID (not "OpenID Connect")
+También había una especificación "OpenID". Eso intentó resolver lo mismo que OpenID Connect, pero no se basó en OAuth2.
+Entonces, era un sistema adicional completo.
+No es muy popular o utilizado hoy en día.
+
+## OpenAPI
+OpenAPI (anteriormente conocido como Swagger) es la especificación abierta para crear API (ahora parte de Linux Foundation).
+FastAPI se basa en OpenAPI.
+Eso es lo que hace posible tener múltiples interfaces automáticas de documentación interactiva, generación de código, etc.
+OpenAPI tiene una forma de definir múltiples "esquemas" de seguridad.
+Al usarlos, puede aprovechar todas estas herramientas basadas en estándares, incluidos estos sistemas de documentación interactivos.
+OpenAPI define los siguientes esquemas de seguridad:
+- apiKey: una clave específica de la aplicación que puede provenir de:
+- - Un parámetro de consulta- .
+- - Un encabezado.
+- - Una cockie.
+- http: sistemas de autenticación HTTP estándar, que incluyen:
+- - bearer: una Autorización de encabezado con un valor de bearer más un token. Esto se hereda de OAuth2.
+- - Autenticación básica HTTP.
+- - HTTP Digest, etc.
+- oauth2: todas las formas OAuth2 de manejar la seguridad (llamadas "flujos").
+- - Varios de estos flujos son apropiados para construir un proveedor de autenticación OAuth 2.0 (como Google, Facebook, Twitter, GitHub, etc.):
+- - - implícito
+- - - Credenciales del cliente
+- - - Código de Autorización
+-  hay un "flujo" específico que se puede usar perfectamente para manejar la autenticación en la misma aplicación directamente:
+- - contraseña: algunos capítulos siguientes cubrirán ejemplos de esto.
+- openIdConnect: tiene una forma de definir cómo descubrir los datos de autenticación OAuth2 automáticamente.
+- - Este descubrimiento automático es lo que se define en la especificación de OpenID Connect.
+
+## FastAPI utilities
+FastAPI proporciona varias herramientas para cada uno de estos esquemas de seguridad en el módulo fastapi.security que simplifican el uso de estos mecanismos de seguridad.
+En los próximos capítulos, verá cómo agregar seguridad a su API utilizando las herramientas proporcionadas por FastAPI.
+Y también verás cómo se integra automáticamente en el sistema de documentación interactivo.
+
+# Security - Primeros Pasos
+Imaginemos que tiene su API de back-end en algún dominio.
+Y tienes un frontend en otro dominio o en una ruta diferente del mismo dominio (o en una aplicación móvil).
+Y desea tener una forma para que el frontend se autentique con el backend, usando un nombre de usuario y una contraseña.
+Podemos usar OAuth2 para construir eso con FastAPI.
+Pero ahorrémosle el tiempo de leer la especificación larga completa solo para encontrar los pequeños fragmentos de información que necesita.
+Usemos las herramientas provistas por FastAPI para manejar la seguridad.
+
+## Como luce
+Primero usemos el código y veamos cómo funciona, y luego volveremos para entender qué está pasando.
+
+## Crear main.py
+Copie el ejemplo en un archivo main.py:
+```
+from fastapi import Depends, FastAPI
+from fastapi.security import OAuth2PasswordBearer
+
+app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+@app.get("/items/")
+async def read_items(token: str = Depends(oauth2_scheme)):
+    return {"token": token}
+```
+
+## Ejecutalo
+Primero instale python-multipart.
+P.ej. pip install python-multipart.
+Esto se debe a que OAuth2 usa "datos de formulario" para enviar el nombre de usuario y la contraseña.
+```
+uvicorn main:app --reload
+```
+
+Ya tienes un nuevo y brillante botón "Autorizar".
+Y su operación de ruta tiene un pequeño candado en la esquina superior derecha en el que puede hacer clic.
+
+## El flujo de password
+Ahora retrocedamos un poco y entendamos qué es todo eso.
+La contraseña "flow" es una de las formas ("flows") definidas en OAuth2, para manejar la seguridad y la autenticación.
+OAuth2 fue diseñado para que el backend o API pudiera ser independiente del servidor que autentica al usuario.
+Pero en este caso, la misma aplicación FastAPI manejará la API y la autenticación.
+Entonces, repasemos desde ese punto de vista simplificado:
+- El usuario escribe el nombre de usuario y la contraseña en la interfaz y presiona Enter.
+- La interfaz (que se ejecuta en el navegador del usuario) envía ese nombre de usuario y contraseña a una URL específica en nuestra API (declarada con tokenUrl="token").
+- La API verifica ese nombre de usuario y contraseña, y responde con un "token" (todavía no hemos implementado nada de esto).
+- - Un "token" es solo una cadena con algún contenido que podemos usar más adelante para verificar a este usuario.
+- - Normalmente, un token está configurado para caducar después de un tiempo.
+- - - Por lo tanto, el usuario tendrá que iniciar sesión nuevamente en algún momento posterior.
+- - - Y si el token es robado, el riesgo es menor. No es como una clave permanente que funcionará para siempre (en la mayoría de los casos).
+- La interfaz almacena ese token temporalmente en algún lugar.
+- El usuario hace clic en la interfaz para ir a otra sección de la aplicación web de la interfaz.
+- La interfaz necesita obtener más datos de la API.
+- - Pero necesita autenticación para ese punto final específico.
+- - Entonces, para autenticarse con nuestra API, envía una Autorización de encabezado con un valor de Bearer más el token.
+- - Si el token contiene foobar, el contenido del encabezado de autorización sería: Bearer foobar.
+
+## FastAPI OAuth2PasswordBearer
+FastAPI proporciona varias herramientas, en diferentes niveles de abstracción, para implementar estas funciones de seguridad.
+En este ejemplo vamos a usar OAuth2, con el flujo de Contraseña, usando un token de bearer. Hacemos eso usando la clase OAuth2PasswordBearer.
+
+Un token "bearer" no es la única opción.
+Pero es el mejor para nuestro caso de uso.
+Y podría ser lo mejor para la mayoría de los casos de uso, a menos que sea un experto en OAuth2 y sepa exactamente por qué hay otra opción que se adapta mejor a sus necesidades.
+En ese caso, FastAPI también le proporciona las herramientas para construirlo.
+
+Cuando creamos una instancia de la clase OAuth2PasswordBearer, pasamos el parámetro tokenUrl. Este parámetro contiene la URL que el cliente (la interfaz que se ejecuta en el navegador del usuario) utilizará para enviar el nombre de usuario y la contraseña para obtener un token.
+```
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+```
+
+Aquí tokenUrl="token" se refiere a un token de URL relativo que aún no hemos creado. Como es una URL relativa, es equivalente a ./token.
+Debido a que estamos usando una URL relativa, si su API estuviera ubicada en https://example.com/, entonces se referiría a https://example.com/token. Pero si su API estuviera ubicada en https://example.com/api/v1/, entonces se referiría a https://example.com/api/v1/token.
+El uso de una URL relativa es importante para asegurarse de que su aplicación siga funcionando incluso en un caso de uso avanzado como Behind a Proxy.
+
+Este parámetro no crea esa operación de punto final/ruta, pero declara que la URL/token será la que el cliente debe usar para obtener el token. Esa información se usa en OpenAPI y luego en los sistemas de documentación de API interactivos.
+Pronto crearemos también la operación de ruta real.
+
+La variable oauth2_scheme es una instancia de OAuth2PasswordBearer, pero también es "invocable".
+Podría llamarse como:
+```
+oauth2_scheme(some, parameters)
+```
+
+Por lo tanto, se puede usar con Depends.
+
+## Uselo
+Ahora puede pasar ese oauth2_scheme en una dependencia con Depends.
+```
+async def read_items(token: str = Depends(oauth2_scheme)):
+```
+
+Esta dependencia proporcionará un str que se asigna al token de parámetro de la función de operación de ruta.
+FastAPI sabrá que puede usar esta dependencia para definir un "esquema de seguridad" en el esquema de OpenAPI (y los documentos de API automáticos).
+
+FastAPI sabrá que puede usar la clase OAuth2PasswordBearer (declarada en una dependencia) para definir el esquema de seguridad en OpenAPI porque hereda de fastapi.security.oauth2.OAuth2, que a su vez hereda de fastapi.security.base.SecurityBase.
+Todas las utilidades de seguridad que se integran con OpenAPI (y los documentos automáticos de API) heredan de SecurityBase, así es como FastAPI puede saber cómo integrarlas en OpenAPI.
+
+## Que hace
+Irá y buscará en la solicitud ese encabezado de Autorización, verificará si el valor es bearer más algún token, y devolverá el token como una cadena.
+Si no ve un encabezado de autorización o el valor no tiene un token de bearer, responderá directamente con un error de código de estado 401 (NO AUTORIZADO).
+Ni siquiera tiene que verificar si el token existe para devolver un error. Puede estar seguro de que si se ejecuta su función, tendrá una cadena en ese token.
+Ya puedes probarlo en los documentos interactivos.
+Todavía no estamos verificando la validez del token, pero eso ya es un comienzo.
+
+## Resumen
+Entonces, en solo 3 o 4 líneas adicionales, ya tiene alguna forma primitiva de seguridad.
+
+# Obtener usuario actual
+En el capítulo anterior, el sistema de seguridad (que se basa en el sistema de inyección de dependencia) le daba a la función de operación de ruta un token como str:
+```
+async def read_items(token: str = Depends(oauth2_scheme)):
+```
+
+Pero eso todavía no es tan útil.
+Hagamos que nos dé el usuario actual.
+
+## Crear un modelo de usuario
+Primero, creemos un modelo de usuario de Pydantic.
+De la misma manera que usamos Pydantic para declarar cuerpos, podemos usarlo en cualquier otro lugar:
+```
+from typing import Union
+from fastapi import Depends, FastAPI
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
+
+app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+class User(BaseModel):
+    username: str
+    email: Union[str, None] = None
+    full_name: Union[str, None] = None
+    disabled: Union[bool, None] = None
+
+def fake_decode_token(token):
+    return User(
+        username=token + "fakedecoded", email="john@example.com", full_name="John Doe"
+    )
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    user = fake_decode_token(token)
+    return user
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+```
+
+## Crear una dependencia get_current_user
+Vamos a crear una dependencia get_current_user.
+¿Recuerdas que las dependencias pueden tener subdependencias?
+get_current_user tendrá una dependencia con el mismo oauth2_scheme que creamos antes.
+Al igual que hacíamos antes en la operación de ruta directamente, nuestra nueva dependencia get_current_user recibirá un token como str de la subdependencia oauth2_scheme:
+```
+from typing import Union
+from fastapi import Depends, FastAPI
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
+
+app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+class User(BaseModel):
+    username: str
+    email: Union[str, None] = None
+    full_name: Union[str, None] = None
+    disabled: Union[bool, None] = None
+
+def fake_decode_token(token):
+    return User(
+        username=token + "fakedecoded", email="john@example.com", full_name="John Doe"
+    )
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    user = fake_decode_token(token)
+    return user
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+```
+
+## Obtener el usuario
+get_current_user utilizará una función de utilidad (falsa) que creamos, que toma un token como str y devuelve nuestro modelo Pydantic User:
+```
+def fake_decode_token(token):
+    return User(
+        username=token + "fakedecoded", email="john@example.com", full_name="John Doe"
+    )
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    user = fake_decode_token(token)
+    return user
+```
+
+## Inyectar al usuario actual
+Así que ahora podemos usar el mismo Depende con nuestro get_current_user en la operación de ruta:
+```
+async def read_users_me(current_user: User = Depends(get_current_user)):
+```
+
+Tenga en cuenta que declaramos el tipo de current_user como el usuario del modelo Pydantic.
+Esto nos ayudará dentro de la función con todas las verificaciones de finalización y tipo.
+
+## Otros modelos
+Ahora puede obtener al usuario actual directamente en las funciones de operación de ruta y manejar los mecanismos de seguridad en el nivel de Inyección de Dependencia, usando Depends.
+Y puede usar cualquier modelo o datos para los requisitos de seguridad (en este caso, un usuario modelo de Pydantic).
+Pero no está restringido a usar algún modelo, clase o tipo de datos específico.
+¿Quieres tener una identificación y un correo electrónico y no tener ningún nombre de usuario en tu modelo? Por supuesto. Puedes usar estas mismas herramientas.
+¿Quieres tener sólo una str? ¿O simplemente un dictado? ¿O una instancia de modelo de clase de base de datos directamente? Todo funciona de la misma manera.
+¿Realmente no tiene usuarios que inicien sesión en su aplicación sino robots, bots u otros sistemas que solo tienen un token de acceso? De nuevo, todo funciona igual.
+Simplemente use cualquier tipo de modelo, cualquier tipo de clase, cualquier tipo de base de datos que necesite para su aplicación. FastAPI lo tiene cubierto con el sistema de inyección de dependencia.
+
+## Tamaño del código
+Este ejemplo puede parecer detallado. Tenga en cuenta que estamos mezclando seguridad, modelos de datos, funciones de utilidad y operaciones de ruta en el mismo archivo.
+Pero aquí está el punto clave.
+Las cosas de inyección de seguridad y dependencia se escriben una vez.
+Y puedes hacerlo tan complejo como quieras. Y aún así, tenerlo escrito una sola vez, en un solo lugar. Con toda la flexibilidad.
+Pero puede tener miles de puntos finales (operaciones de ruta) utilizando el mismo sistema de seguridad.
+Y todos ellos (o cualquier parte de ellos que desee) pueden aprovechar la reutilización de estas dependencias o cualquier otra dependencia que cree.
+Y todas estas miles de operaciones de ruta pueden ser tan pequeñas como 3 líneas:
+```
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+```
+
+## Resumen
+Ahora puede obtener el usuario actual directamente en su función de operación de ruta.
+Ya estamos a mitad de camino.
+Solo necesitamos agregar una operación de ruta para que el usuario/cliente envíe el nombre de usuario y la contraseña.
+Eso viene después.
+
+# OAuth2 simple con contraseña y portador
+Ahora, construyamos a partir del capítulo anterior y agreguemos las partes que faltan para tener un flujo de seguridad completo.
+
+## Obtenga el nombre de usuario y la contraseña
+Vamos a utilizar las utilidades de seguridad FastAPI para obtener el nombre de usuario y la contraseña.
+OAuth2 especifica que al usar el "flujo de contraseña" (que estamos usando) el cliente/usuario debe enviar un campo de nombre de usuario y contraseña como datos del formulario.
+Y la especificación dice que los campos deben nombrarse así. Entonces, el nombre de usuario o el correo electrónico no funcionarían.
+Pero no te preocupes, puedes mostrarlo como quieras a tus usuarios finales en la interfaz.
+Y sus modelos de base de datos pueden usar cualquier otro nombre que desee.
+Pero para la operación de ruta de inicio de sesión, necesitamos usar estos nombres para que sean compatibles con la especificación (y poder, por ejemplo, usar el sistema de documentación API integrado).
+La especificación también establece que el nombre de usuario y la contraseña deben enviarse como datos de formulario (por lo tanto, no hay JSON aquí).
+
+## `scope`
+La especificación también dice que el cliente puede enviar otro campo de formulario "scope".
+El nombre del campo de formulario es scope (en singular), pero en realidad es una cadena larga con "scope" separados por espacios.
+Cada "scope" es solo una cadena (sin espacios).
+Normalmente se utilizan para declarar permisos de seguridad específicos, por ejemplo:
+- users:read o users:write son ejemplos comunes.
+- instagram_basic es utilizado por Facebook / Instagram.
+- Google utiliza https://www.googleapis.com/auth/drive.
+
+En OAuth2, un "scope" es solo una cadena que declara que se requiere un permiso específico.
+No importa si tiene otros caracteres como: o si es una URL.
+Esos detalles son específicos de la implementación.
+Para OAuth2 son solo cadenas.
+
+## Código para obtener el usuario y la contraseña
+Ahora usemos las utilidades provistas por FastAPI para manejar esto.
+
+### OAuth2PasswordRequestForm
+Primero, importe OAuth2PasswordRequestForm y utilícelo como una dependencia con Depends en la operación de ruta para /token:
+```
+from typing import Union
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
+
+fake_users_db = {
+    "johndoe": {
+        "username": "johndoe",
+        "full_name": "John Doe",
+        "email": "johndoe@example.com",
+        "hashed_password": "fakehashedsecret",
+        "disabled": False,
+    },
+    "alice": {
+        "username": "alice",
+        "full_name": "Alice Wonderson",
+        "email": "alice@example.com",
+        "hashed_password": "fakehashedsecret2",
+        "disabled": True,
+    },
+}
+
+app = FastAPI()
+
+def fake_hash_password(password: str):
+    return "fakehashed" + password
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+class User(BaseModel):
+    username: str
+    email: Union[str, None] = None
+    full_name: Union[str, None] = None
+    disabled: Union[bool, None] = None
+
+class UserInDB(User):
+    hashed_password: str
+
+def get_user(db, username: str):
+    if username in db:
+        user_dict = db[username]
+        return UserInDB(**user_dict)
+
+def fake_decode_token(token):
+    # This doesn't provide any security at all
+    # Check the next version
+    user = get_user(fake_users_db, token)
+    return user
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    user = fake_decode_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)):
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+@app.post("/token")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user_dict = fake_users_db.get(form_data.username)
+    if not user_dict:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    user = UserInDB(**user_dict)
+    hashed_password = fake_hash_password(form_data.password)
+    if not hashed_password == user.hashed_password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+    return {"access_token": user.username, "token_type": "bearer"}
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return current_user
+```
+
 
 # new
