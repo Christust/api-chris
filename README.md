@@ -3838,5 +3838,131 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
 ```
 
+OAuth2PasswordRequestForm es una dependencia de clase que declara el cuerpo de un formulario con:
+
+- El nombre de usuario.
+- La contraseña.
+- Un campo de alcance opcional como una gran cadena, compuesta de cadenas separadas por espacios.
+- Un tipo de subvención opcional.
+- Un client_id opcional (no lo necesitamos para nuestro ejemplo).
+- Un client_secret opcional (no lo necesitamos para nuestro ejemplo).
+
+La especificación OAuth2 en realidad requiere un campo grant_type con un valor fijo de contraseña, pero OAuth2PasswordRequestForm no lo impone.
+Si necesita aplicarlo, use OAuth2PasswordRequestFormStrict en lugar de OAuth2PasswordRequestForm.
+OAuth2PasswordRequestForm no es una clase especial para FastAPI como lo es OAuth2PasswordBearer.
+OAuth2PasswordBearer hace que FastAPI sepa que es un esquema de seguridad. Entonces se agrega de esa manera a OpenAPI.
+Pero OAuth2PasswordRequestForm es solo una dependencia de clase que podría haber escrito usted mismo, o podría haber declarado parámetros de formulario directamente.
+Pero como es un caso de uso común, FastAPI lo proporciona directamente, solo para hacerlo más fácil.
+
+## Usa los datos del formulario
+La instancia de la clase de dependencia OAuth2PasswordRequestForm no tendrá un scope de atributo con la cadena larga separada por espacios, sino que tendrá un atributo de scope con la lista real de cadenas para cada scope enviado.
+No estamos usando scopes en este ejemplo, pero la funcionalidad está ahí si la necesita.
+
+Ahora, obtenga los datos del usuario de la base de datos (falsa), utilizando el nombre de usuario del campo de formulario.
+Si no existe tal usuario, devolvemos un error que dice "nombre de usuario o contraseña incorrectos".
+Para el error, usamos la excepción HTTPException:
+```
+user_dict = fake_users_db.get(form_data.username)
+    if not user_dict:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+```
+
+## Verifique la contraseña
+En este punto tenemos los datos de usuario de nuestra base de datos, pero no hemos comprobado la contraseña.
+Primero pongamos esos datos en el modelo Pydantic UserInDB.
+Nunca debe guardar contraseñas de texto sin formato, por lo tanto, usaremos el sistema de hashing de contraseñas (falsas).
+Si las contraseñas no coinciden, devolvemos el mismo error.
+
+### Password hashing
+"Hashing" significa: convertir algún contenido (una contraseña en este caso) en una secuencia de bytes (solo una cadena) que parece un galimatías.
+Cada vez que pasa exactamente el mismo contenido (exactamente la misma contraseña) obtiene exactamente el mismo galimatías.
+Pero no puede convertir el galimatías a la contraseña.
+
+#### POR QUÉ UTILIZAR HASH DE CONTRASEÑA
+Si le roban su base de datos, el ladrón no tendrá las contraseñas de texto sin formato de sus usuarios, solo los hashes.
+Por lo tanto, el ladrón no podrá intentar usar esas mismas contraseñas en otro sistema (ya que muchos usuarios usan la misma contraseña en todas partes, esto sería peligroso).
+```
+ user = UserInDB(**user_dict)
+    hashed_password = fake_hash_password(form_data.password)
+    if not hashed_password == user.hashed_password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+```
+
+## Acerca de **user_dict
+UserInDB(**user_dict) significa:
+Pase las claves y los valores de user_dict directamente como argumentos de clave-valor, equivalentes a:
+```
+UserInDB(
+    username = user_dict["username"],
+    email = user_dict["email"],
+    full_name = user_dict["full_name"],
+    disabled = user_dict["disabled"],
+    hashed_password = user_dict["hashed_password"],
+)
+```
+
+## Retorna el token
+La respuesta del extremo del token debe ser un objeto JSON.
+Debe tener un token_type. En nuestro caso, como estamos usando tokens "Bearer", el tipo de token debe ser "bearer".
+Y debería tener un access_token, con una cadena que contenga nuestro token de acceso.
+Para este ejemplo simple, vamos a ser completamente inseguros y devolveremos el mismo nombre de usuario que el token.
+
+En el próximo capítulo, verá una implementación realmente segura, con hash de contraseña y tokens JWT.
+Pero por ahora, concentrémonos en los detalles específicos que necesitamos.
+
+```
+return {"access_token": user.username, "token_type": "bearer"}
+```
+
+Según la especificación, debe devolver un JSON con access_token y token_type, igual que en este ejemplo.
+Esto es algo que debe hacer usted mismo en su código y asegúrese de usar esas claves JSON.
+Es casi lo único que debe recordar para hacer correctamente usted mismo, para cumplir con las especificaciones.
+Por lo demás, FastAPI lo maneja por usted.
+
+## Actualizar las dependencias
+Ahora vamos a actualizar nuestras dependencias.
+Queremos obtener el usuario actual solo si este usuario está activo.
+Entonces, creamos una dependencia adicional get_current_active_user que a su vez usa get_current_user como dependencia.
+Ambas dependencias solo devolverán un error HTTP si el usuario no existe o si está inactivo.
+Entonces, en nuestro punto final, solo obtendremos un usuario si el usuario existe, se autenticó correctamente y está activo:
+```
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    user = fake_decode_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)):
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return current_user
+```
+
+El encabezado adicional WWW-Authenticate con valor Bearer que devolvemos aquí también es parte de la especificación.
+Se supone que cualquier código de estado HTTP (error) 401 "NO AUTORIZADO" también devolverá un encabezado WWW-Authenticate.
+En el caso de los tokens bearer  (nuestro caso), el valor de ese encabezado debe ser bearer.
+En realidad, puede omitir ese encabezado adicional y aún funcionaría.
+Pero se proporciona aquí para cumplir con las especificaciones.
+Además, puede haber herramientas que lo esperen y lo usen (ahora o en el futuro) y que puedan ser útiles para usted o sus usuarios, ahora o en el futuro.
+Ese es el beneficio de los estándares...
+
+## Resumen
+Ahora tienes las herramientas para implementar un completo sistema de seguridad basado en usuario y contraseña para tu API.
+Con estas herramientas, puede hacer que el sistema de seguridad sea compatible con cualquier base de datos y con cualquier usuario o modelo de datos.
+El único detalle que falta es que todavía no es "seguro".
+En el próximo capítulo, verá cómo usar una biblioteca segura de hash de contraseñas y tokens JWT.
+
+
+
+
 
 # new
