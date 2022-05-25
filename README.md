@@ -3961,8 +3961,423 @@ Con estas herramientas, puede hacer que el sistema de seguridad sea compatible c
 El único detalle que falta es que todavía no es "seguro".
 En el próximo capítulo, verá cómo usar una biblioteca segura de hash de contraseñas y tokens JWT.
 
+# OAuth2 con contraseña (y hashing), bearer con tokens JWT
+Ahora que tenemos todo el flujo de seguridad, hagamos que la aplicación sea realmente segura, usando tokens JWT y hash de contraseña seguro.
+Este código es algo que realmente puede usar en su aplicación, guardar los hashes de contraseña en su base de datos, etc.
+Vamos a empezar desde donde lo dejamos en el capítulo anterior e incrementarlo.
+
+## Sobre JWT
+JWT significa "tokens web JSON".
+Es un estándar para codificar un objeto JSON en una cadena larga y densa sin espacios. Se parece a esto:
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+```
+
+No está encriptado, por lo que cualquiera podría recuperar la información de los contenidos.
+Pero está firmado. Entonces, cuando recibe un token que emitió, puede verificar que realmente lo emitió.
+De esa forma, puede crear un token con una caducidad de, digamos, 1 semana. Y luego, cuando el usuario regresa al día siguiente con el token, sabe que el usuario todavía está conectado a su sistema.
+Después de una semana, el token caducará y el usuario no estará autorizado y deberá iniciar sesión nuevamente para obtener un nuevo token. Y si el usuario (o un tercero) intentara modificar el token para cambiar la caducidad, podría descubrirlo, porque las firmas no coincidirían.
+Si quiere jugar con tokens JWT y ver cómo funcionan, consulte https://jwt.io.
+
+## Instalar python-jose
+Necesitamos instalar python-jose para generar y verificar los tokens JWT en Python:
+```
+pip install "python-jose[cryptography]"
+```
+
+Python-jose requiere un backend criptográfico como extra.
+Aquí estamos usando el recomendado: pyca/cryptography.
+
+Este tutorial utilizó anteriormente PyJWT.
+Pero se actualizó para usar Python-jose en su lugar, ya que proporciona todas las funciones de PyJWT más algunos extras que podría necesitar más adelante al crear integraciones con otras herramientas.
+
+## Hash de contraseña
+"Hashing" significa convertir algún contenido (una contraseña en este caso) en una secuencia de bytes (solo una cadena) que parece un galimatías.
+Cada vez que pasa exactamente el mismo contenido (exactamente la misma contraseña) obtiene exactamente el mismo galimatías.
+Pero no puede convertir el galimatías a la contraseña.
+
+### ¿Por qué usar hash de contraseña?
+Si le roban su base de datos, el ladrón no tendrá las contraseñas de texto sin formato de sus usuarios, solo los hashes.
+Por lo tanto, el ladrón no podrá intentar usar esa contraseña en otro sistema (ya que muchos usuarios usan la misma contraseña en todas partes, esto sería peligroso).
+
+## Install passlib
+PassLib es un excelente paquete de Python para manejar hashes de contraseñas.
+Admite muchos algoritmos de hash seguros y utilidades para trabajar con ellos.
+El algoritmo recomendado es "Bcrypt".
+Entonces, instala PassLib con Bcrypt:
+```
+pip install "passlib[bcrypt]"
+```
+
+Con passlib, incluso puede configurarlo para poder leer contraseñas creadas por Django, un complemento de seguridad Flask o muchos otros.
+Entonces, podría, por ejemplo, compartir los mismos datos de una aplicación Django en una base de datos con una aplicación FastAPI. O migre gradualmente una aplicación Django utilizando la misma base de datos.
+Y sus usuarios podrán iniciar sesión desde su aplicación Django o desde su aplicación FastAPI, al mismo tiempo.
 
 
+## Hash y verificar las contraseñas
+Importa las herramientas que necesitamos de passlib.
+Cree un "contexto" PassLib. Esto es lo que se usará para codificar y verificar contraseñas.
 
+El contexto PassLib también tiene funcionalidad para usar diferentes algoritmos hash, incluidos los antiguos obsoletos solo para permitir verificarlos, etc.
+Por ejemplo, podría usarlo para leer y verificar contraseñas generadas por otro sistema (como Django) pero codificar las contraseñas nuevas con un algoritmo diferente como Bcrypt.
+Y ser compatible con todos ellos al mismo tiempo.
+
+Cree una función de utilidad para codificar una contraseña proveniente del usuario.
+Y otra utilidad para verificar si una contraseña recibida coincide con el hash almacenado.
+Y otro para autenticar y devolver un usuario.
+```
+from datetime import datetime, timedelta
+from typing import Union
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel
+
+# to get a string like this run:
+# openssl rand -hex 32
+SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+fake_users_db = {
+    "johndoe": {
+        "username": "johndoe",
+        "full_name": "John Doe",
+        "email": "johndoe@example.com",
+        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+        "disabled": False,
+    }
+}
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Union[str, None] = None
+
+class User(BaseModel):
+    username: str
+    email: Union[str, None] = None
+    full_name: Union[str, None] = None
+    disabled: Union[bool, None] = None
+
+class UserInDB(User):
+    hashed_password: str
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+app = FastAPI()
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def get_user(db, username: str):
+    if username in db:
+        user_dict = db[username]
+        return UserInDB(**user_dict)
+
+def authenticate_user(fake_db, username: str, password: str):
+    user = get_user(fake_db, username)
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user
+
+def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    user = get_user(fake_users_db, username=token_data.username)
+    if user is None:
+        raise credentials_exception
+    return user
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)):
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me/", response_model=User)
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return current_user
+
+@app.get("/users/me/items/")
+async def read_own_items(current_user: User = Depends(get_current_active_user)):
+    return [{"item_id": "Foo", "owner": current_user.username}]
+```
+
+Si revisa la nueva base de datos (falsa) fake_users_db, verá cómo se ve ahora la contraseña cifrada: "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW".
+
+## Manejar tokens JWT
+Importar los módulos instalados.
+Cree una clave secreta aleatoria que se usará para firmar los tokens JWT.
+Para generar una clave secreta aleatoria segura, use el comando:
+
+```
+openssl rand -hex 32
+```
+
+Y copie la salida a la variable SECRET_KEY (no use la del ejemplo).
+Cree un ALGORITMO variable con el algoritmo utilizado para firmar el token JWT y configúrelo en "HS256".
+Cree una variable para el vencimiento del token.
+Defina un modelo Pydantic que se usará en el extremo del token para la respuesta.
+Cree una función de utilidad para generar un nuevo token de acceso.
+```
+from jose import JWTError, jwt
+
+SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+```
+
+## Update the dependencies
+Actualice get_current_user para recibir el mismo token que antes, pero esta vez, utilizando tokens JWT.
+Decodifique el token recibido, verifíquelo y devuelva el usuario actual.
+Si el token no es válido, devuelva un error HTTP de inmediato.
+```
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    user = get_user(fake_users_db, username=token_data.username)
+    if user is None:
+        raise credentials_exception
+    return user
+```
+
+## Actualizar la /token path operation
+Cree un timedelta con el tiempo de vencimiento del token.
+Cree un token de acceso JWT real y devuélvalo.
+
+```
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+```
+
+## Detalles técnicos sobre el sub "subject" de JWT
+La especificación JWT dice que hay una clave sub, con el subject del token.
+Es opcional usarlo, pero ahí es donde colocaría la identificación del usuario, así que lo estamos usando aquí.
+JWT puede usarse para otras cosas además de identificar a un usuario y permitirle realizar operaciones directamente en su API.
+Por ejemplo, podría identificar un "automóvil" o una "publicación de blog".
+Luego, podría agregar permisos sobre esa entidad, como "conducir" (para el automóvil) o "editar" (para el blog).
+Y luego, podría darle ese token JWT a un usuario (o bot), y podría usarlo para realizar esas acciones (conducir el automóvil o editar la publicación del blog) sin siquiera necesitar tener una cuenta, solo con el token JWT. su API generada para eso.
+Usando estas ideas, JWT se puede usar para escenarios mucho más sofisticados.
+En esos casos, varias de esas entidades podrían tener la misma ID, digamos foo (un usuario foo, un automóvil foo y una publicación de blog foo).
+Por lo tanto, para evitar colisiones de ID, al crear el token JWT para el usuario, puede prefijar el valor de la subclave, p. con nombre de usuario:. Entonces, en este ejemplo, el valor de sub podría haber sido: nombre de usuario: johndoe.
+Lo importante a tener en cuenta es que la clave secundaria debe tener un identificador único en toda la aplicación y debe ser una cadena.
+
+## Resumen
+Con lo que has visto hasta ahora, puedes configurar una aplicación FastAPI segura usando estándares como OAuth2 y JWT.
+En casi cualquier marco, el manejo de la seguridad se convierte rápidamente en un tema bastante complejo.
+Muchos paquetes que lo simplifican mucho tienen que hacer muchos compromisos con el modelo de datos, la base de datos y las funciones disponibles. Y algunos de estos paquetes que simplifican demasiado las cosas en realidad tienen fallas de seguridad debajo.
+
+# Middleware
+Puede agregar middleware a las aplicaciones FastAPI.
+Un "middleware" es una función que funciona con cada solicitud antes de que sea procesada por cualquier operación de ruta específica. Y también con cada respuesta antes de devolverla.
+- Toma cada solicitud que llega a su aplicación.
+- Luego puede hacer algo con esa solicitud o ejecutar cualquier código necesario.
+- Luego pasa la solicitud para que sea procesada por el resto de la aplicación (mediante alguna operación de ruta).
+- Luego toma la respuesta generada por la aplicación (mediante alguna operación de ruta).
+- Puede hacer algo con esa respuesta o ejecutar cualquier código necesario.
+- Luego devuelve la respuesta.
+
+## Crear un middleware
+Para crear un middleware, utiliza el decorador @app.middleware("http") encima de una función.
+La función de middleware recibe:
+
+- La solicitud.
+- Una función call_next que recibirá la solicitud como parámetro.
+- - Esta función pasará la solicitud a la operación de ruta correspondiente.
+- - Luego devuelve la respuesta generada por la operación de ruta correspondiente.
+- A continuación, puede modificar aún más la respuesta antes de devolverla.
+```
+import time
+
+from fastapi import FastAPI, Request
+
+app = FastAPI()
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+```
+
+## Antes y después de la respuesta.
+Puede agregar código para que se ejecute con la solicitud, antes de que lo reciba cualquier operación de ruta.
+Y también después de que se genera la respuesta, antes de devolverla.
+Por ejemplo, podría agregar un encabezado personalizado X-Process-Time que contenga el tiempo en segundos que tomó procesar la solicitud y generar una respuesta:
+```
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+```
+
+# CORS (Cross-Origin Resource Sharing)
+CORS o "Intercambio de recursos de origen cruzado" se refiere a las situaciones en las que una interfaz que se ejecuta en un navegador tiene código JavaScript que se comunica con un backend, y el backend está en un "origen" diferente al de la interfaz.
+
+## Origin
+Un origen es la combinación de protocolo (http, https), dominio (myapp.com, localhost, localhost.tiangolo.com) y puerto (80, 443, 8080).
+Entonces, todos estos son orígenes diferentes:
+- http://localhost
+- https://localhost
+- http://localhost:8080
+
+Incluso si están todos en localhost, usan diferentes protocolos o puertos, por lo que son "orígenes" diferentes.
+
+## Pasos
+Entonces, supongamos que tiene una interfaz ejecutándose en su navegador en http://localhost:8080, y su JavaScript intenta comunicarse con un servidor que se ejecuta en http://localhost (porque no especificamos un puerto, el navegador asumirá el puerto predeterminado 80).
+Luego, el navegador enviará una solicitud de OPCIONES HTTP al backend, y si el backend envía los encabezados apropiados que autorizan la comunicación desde este origen diferente (http://localhost:8080), entonces el navegador permitirá que el JavaScript en el frontend envíe su solicitud al backend.
+Para lograr esto, el backend debe tener una lista de "orígenes permitidos".
+En este caso, tendría que incluir http://localhost:8080 para que la interfaz funcione correctamente.
+
+## Wildcards
+También es posible declarar la lista como "*" (un "comodín") para decir que todos están permitidos.
+Pero eso solo permitirá cierto tipo de comunicación, excluyendo todo lo que involucre credenciales: Cookies, Encabezados de autorización como los que se usan con los Bearer Tokens, etc.
+Entonces, para que todo funcione correctamente, es mejor especificar explícitamente los orígenes permitidos.
+
+## Use CORSMiddleware
+Puede configurarlo en su aplicación FastAPI utilizando CORSMiddleware.
+- Importar CORSMiddleware.
+- Cree una lista de orígenes permitidos (como cadenas).
+- Agréguelo como un "middleware" a su aplicación FastAPI.
+
+También puede especificar si su backend permite:
+- Credenciales (Cabeceras de Autorización, Cookies, etc).
+- Métodos HTTP específicos (POST, PUT) o todos ellos con el comodín "*".
+- Cabeceras HTTP específicas o todas ellas con el comodín "*".
+
+```
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+origins = [
+    "http://localhost.tiangolo.com",
+    "https://localhost.tiangolo.com",
+    "http://localhost",
+    "http://localhost:8080",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def main():
+    return {"message": "Hello World"}
+```
+
+Los parámetros predeterminados utilizados por la implementación de CORSMiddleware son restrictivos de forma predeterminada, por lo que deberá habilitar explícitamente orígenes, métodos o encabezados particulares para que los navegadores puedan usarlos en un contexto de dominio cruzado.
+Se admiten los siguientes argumentos:
+- allow_origins: una lista de orígenes a los que se debe permitir realizar solicitudes de origen cruzado. P.ej. ['https://ejemplo.org', 'https://www.ejemplo.org']. Puede usar ['*'] para permitir cualquier origen.
+- allow_origin_regex: una cadena de expresiones regulares para comparar con los orígenes a los que se debe permitir realizar solicitudes de origen cruzado. p.ej. 'https://.*\.ejemplo\.org'.
+- allow_methods: una lista de métodos HTTP que deben permitirse para solicitudes de origen cruzado. El valor predeterminado es ['GET']. Puede usar ['*'] para permitir todos los métodos estándar.
+- allow_headers: una lista de encabezados de solicitud HTTP que deben admitirse para solicitudes de origen cruzado. El valor predeterminado es []. Puede usar ['*'] para permitir todos los encabezados. Los encabezados Accept, Accept-Language, Content-Language y Content-Type siempre están permitidos para las solicitudes de CORS.
+- allow_credentials: indica que las cookies deben admitirse para solicitudes de origen cruzado. El valor predeterminado es falso. Además, allow_origins no se puede establecer en ['*'] para que se permitan las credenciales, se deben especificar los orígenes.
+- expone_headers: indica los encabezados de respuesta que deben estar accesibles para el navegador. El valor predeterminado es [].
+- max_age: establece un tiempo máximo en segundos para que los navegadores almacenen en caché las respuestas de CORS. El valor predeterminado es 600.
+
+El middleware responde a dos tipos particulares de solicitud HTTP...
+
+## Solicitudes de verificación previa de CORS
+Estas son cualquier solicitud de OPCIONES con encabezados Origin y Access-Control-Request-Method.
+En este caso, el middleware interceptará la solicitud entrante y responderá con los encabezados CORS apropiados y una respuesta 200 o 400 con fines informativos.
+
+## Solicitudes simples
+Cualquier solicitud con un encabezado de origen. En este caso, el middleware pasará la solicitud de forma normal, pero incluirá los encabezados CORS apropiados en la respuesta.
 
 # new

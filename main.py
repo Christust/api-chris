@@ -8,8 +8,6 @@ import uvicorn
 
 app = FastAPI()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
 class ModelName(str, Enum):
     alexnet = "alexnet"
     resnet = "resnet"
@@ -48,14 +46,6 @@ async def post_item(item: Item):
         item_dict.update({"total": item.price + item.tax})
         return item_dict
     return item
-
-@app.get("/code")
-async def get_code():
-    return FileResponse("./main.py")
-
-@app.get("/documentation")
-async def get_documentation(token: str = Depends(oauth2_scheme)):
-    return {"token": token}
 
 # Descomentar para depurar
 # uvicorn.run(app, host="0.0.0.0", port=8000)
