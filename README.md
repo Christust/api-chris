@@ -4380,4 +4380,293 @@ En este caso, el middleware interceptará la solicitud entrante y responderá co
 ## Solicitudes simples
 Cualquier solicitud con un encabezado de origen. En este caso, el middleware pasará la solicitud de forma normal, pero incluirá los encabezados CORS apropiados en la respuesta.
 
+# SQL (Relational) Databases
+FastAPI no requiere que use una base de datos SQL (relacional).
+Pero puede usar cualquier base de datos relacional que desee.
+Aquí veremos un ejemplo usando SQLAlchemy.
+Puede adaptarlo fácilmente a cualquier base de datos compatible con SQLAlchemy, como:
+- PostgreSQL
+- MySQL
+- SQLite
+- Oracle
+- Microsoft SQL Server, etc.
+
+En este ejemplo, usaremos SQLite, porque usa un solo archivo y Python tiene soporte integrado. Entonces, puede copiar este ejemplo y ejecutarlo tal como está.
+Más tarde, para su aplicación de producción, es posible que desee utilizar un servidor de base de datos como PostgreSQL.
+
+## ORMs
+FastAPI funciona con cualquier base de datos y cualquier estilo de biblioteca para comunicarse con la base de datos.
+Un patrón común es usar un "ORM": una biblioteca de "mapeo relacional de objetos".
+Un ORM tiene herramientas para convertir ("mapa") entre objetos en código y tablas de base de datos ("relaciones").
+Con un ORM, normalmente creas una clase que representa una tabla en una base de datos SQL, cada atributo de la clase representa una columna, con un nombre y un tipo.
+Por ejemplo, una clase Pet podría representar una tabla SQL de mascotas.
+Y cada objeto de instancia de esa clase representa una fila en la base de datos.
+Por ejemplo, un objeto orion_cat (una instancia de Pet) podría tener un atributo orion_cat.type, para el tipo de columna. Y el valor de ese atributo podría ser, p. "gato".
+Estos ORM también cuentan con herramientas para realizar las conexiones o relaciones entre tablas o entidades.
+De esta manera, también podría tener un atributo orion_cat.owner y el propietario contendría los datos del propietario de esta mascota, tomados de la tabla de propietarios.
+Entonces, orion_cat.owner.name podría ser el nombre (de la columna de nombre en la tabla de propietarios) del dueño de esta mascota.
+Podría tener un valor como "Arquilian".
+Y el ORM hará todo el trabajo para obtener la información de los propietarios de la tabla correspondiente cuando intente acceder a ella desde su objeto favorito.
+Los ORM comunes son, por ejemplo: Django-ORM (parte del marco Django), SQLAlchemy ORM (parte de SQLAlchemy, independiente del marco) y Peewee (independiente del marco), entre otros.
+Aquí veremos cómo trabajar con SQLAlchemy ORM.
+De manera similar podrías usar cualquier otro ORM.
+
+## File structure
+Para estos ejemplos, supongamos que tiene un directorio llamado my_super_project que contiene un subdirectorio llamado sql_app con una estructura como esta:
+```
+.
+└── sql_app
+    ├── __init__.py
+    ├── crud.py
+    ├── database.py
+    ├── main.py
+    ├── models.py
+    └── schemas.py
+```
+
+El archivo __init__.py es solo un archivo vacío, pero le dice a Python que sql_app con todos sus módulos (archivos de Python) es un paquete.
+Ahora veamos qué hace cada archivo/módulo.
+
+## Crear las partes de SQLAlchemy
+Consultemos el archivo sql_app/database.py.
+
+### Importar las partes de SQLAlchemy
+```
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+```
+
+### Crear una database URL para SQLAlchemy
+```
+SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
+# SQLALCHEMY_DATABASE_URL = "postgresql://user:password@postgresserver/db"
+```
+
+En este ejemplo, nos estamos "conectando" a una base de datos SQLite (abriendo un archivo con la base de datos SQLite).
+El archivo se ubicará en el mismo directorio en el archivo sql_app.db.
+Por eso la última parte es ./sql_app.db.
+Si estuviera utilizando una base de datos PostgreSQL, solo tendría que descomentar la línea:
+```
+SQLALCHEMY_DATABASE_URL = "postgresql://user:password@postgresserver/db"
+```
+
+...y adáptalo con los datos de tu base de datos y tus credenciales (equivalentemente para MySQL, MariaDB o cualquier otra).
+
+## Crear la SQLAlchemy engine
+El primer paso es crear un "motor" de SQLAlchemy.
+Más tarde usaremos este motor en otros lugares.
+```
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+)
+```
+
+El argumento:
+```
+connect_args={"check_same_thread": False}
+```
+
+... solo se necesita para SQLite. No es necesario para otras bases de datos.
+
+## Crear una SessionLocal class
+Cada instancia de la clase SessionLocal será una sesión de base de datos. La clase en sí aún no es una sesión de base de datos.
+Pero una vez que creamos una instancia de la clase SessionLocal, esta instancia será la sesión real de la base de datos.
+Lo llamamos SessionLocal para distinguirlo de la sesión que estamos importando desde SQLAlchemy.
+Usaremos Session (la importada de SQLAlchemy) más adelante.
+Para crear la clase SessionLocal, use la función sessionmaker:
+```
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+```
+
+## Crear una Base class
+Ahora usaremos la función declarative_base() que devuelve una clase.
+Posteriormente heredaremos de esta clase para crear cada uno de los modelos o clases de base de datos (los modelos ORM):
+```
+Base = declarative_base()
+```
+
+## Crear una database models
+Ahora veamos el archivo sql_app/models.py.
+
+### Crear modelos de SQLAlchemy a partir de la clase Base
+Usaremos esta clase Base que creamos antes para crear los modelos SQLAlchemy.
+
+SQLAlchemy usa el término "modelo" para referirse a estas clases e instancias que interactúan con la base de datos.
+Pero Pydantic también usa el término "modelo" para referirse a algo diferente, las clases e instancias de validación, conversión y documentación de datos.
+
+Importar Base desde la base de datos (el archivo base de datos.py de arriba).
+Cree clases que hereden de él.
+Estas clases son los modelos SQLAlchemy.
+
+```
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+from .database import Base
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    is_active = Column(Boolean, default=True)
+    items = relationship("Item", back_populates="owner")
+
+class Item(Base):
+    __tablename__ = "items"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True)
+    description = Column(String, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner = relationship("User", back_populates="items")
+```
+
+El atributo __tablename__ le dice a SQLAlchemy el nombre de la tabla a usar en la base de datos para cada uno de estos modelos.
+
+## Crear model attributes/columns
+Ahora cree todos los atributos del modelo (clase).
+Cada uno de estos atributos representa una columna en su tabla de base de datos correspondiente.
+Usamos la columna de SQLAlchemy como valor predeterminado.
+Y pasamos un "tipo" de clase SQLAlchemy, como Integer, String y Boolean, que define el tipo en la base de datos, como un argumento.
+```
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+
+...
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    is_active = Column(Boolean, default=True)
+```
+
+## Crear las relationships
+Ahora crea las relaciones.
+Para esto, usamos la relación proporcionada por SQLAlchemy ORM.
+Esto se convertirá, más o menos, en un atributo "mágico" que contendrá los valores de otras tablas relacionadas con esta.
+```
+from sqlalchemy.orm import relationship
+...
+     items = relationship("Item", back_populates="owner")
+...
+     owner = relationship("User", back_populates="items")
+```
+
+Al acceder a los elementos de atributo en un Usuario, como en my_user.items, tendrá una lista de modelos de Item SQLAlchemy (de la tabla de elementos) que tienen una clave externa que apunta a este registro en la tabla de usuarios.
+Cuando accede a my_user.items, SQLAlchemy realmente irá y buscará los elementos de la base de datos en la tabla de elementos y los completará aquí.
+Y al acceder al propietario del atributo en un elemento, contendrá un modelo SQLAlchemy de usuario de la tabla de usuarios. Utilizará el atributo/columna owner_id con su clave externa para saber qué registro obtener de la tabla de usuarios.
+
+## Crear los Pydantic models
+Ahora revisemos el archivo sql_app/schemas.py.
+
+### Crear initial Pydantic models / schemas
+Cree modelos Pydantic ItemBase y UserBase (o digamos "esquemas") para tener atributos comunes al crear o leer datos.
+Y cree ItemCreate y UserCreate que hereden de ellos (para que tengan los mismos atributos), además de cualquier dato adicional (atributos) necesarios para la creación.
+Así, el usuario también dispondrá de una contraseña a la hora de crearla.
+Pero por seguridad, la contraseña no estará en otros modelos de Pydantic, por ejemplo, no se enviará desde la API al leer un usuario.
+```
+from typing import List, Union
+from pydantic import BaseModel
+
+class ItemBase(BaseModel):
+    title: str
+    description: Union[str, None] = None
+
+class ItemCreate(ItemBase):
+    pass
+
+class Item(ItemBase):
+    id: int
+    owner_id: int
+
+    class Config:
+        orm_mode = True
+
+class UserBase(BaseModel):
+    email: str
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+    is_active: bool
+    items: List[Item] = []
+    class Config:
+        orm_mode = True
+```
+
+## Estilo SQLAlchemy y estilo Pydantic
+Tenga en cuenta que los modelos de SQLAlchemy definen atributos usando = y pasan el tipo como parámetro a Column, como en:
+```
+name = Column(String)
+```
+
+mientras que los modelos Pydantic declaran los tipos usando:, la nueva sintaxis de anotación de tipo/sugerencias de tipo:
+```
+name: str
+```
+
+Téngalo en cuenta, para que no se confunda al usar = y : con ellos.
+
+## Crear modelos Pydantic/esquemas para lectura/retorno
+Ahora cree modelos Pydantic (esquemas) que se utilizarán al leer datos, al devolverlos desde la API.
+Por ejemplo, antes de crear un artículo, no sabemos cuál será el ID que se le asignará, pero al leerlo (al devolverlo desde la API) ya sabremos su ID.
+De la misma manera, al leer un usuario, ahora podemos declarar que los elementos contendrán los elementos que pertenecen a este usuario.
+No solo los ID de esos elementos, sino todos los datos que definimos en el modelo de Pydantic para leer elementos: Item.
+```
+class Item(ItemBase):
+    id: int
+    owner_id: int
+
+class User(UserBase):
+    id: int
+    is_active: bool
+    items: List[Item] = []
+```
+
+Tenga en cuenta que el usuario, el modelo de Pydantic que se utilizará al leer un usuario (devolviéndolo desde la API) no incluye la contraseña.
+
+## Use Pydantic's orm_mode
+Ahora, en los modelos Pydantic para lectura, Elemento y Usuario, agregue una clase Config interna.
+Esta clase Config se usa para proporcionar configuraciones a Pydantic.
+En la clase Config, establezca el atributo orm_mode = True.
+```
+class Config:
+        orm_mode = True
+```
+
+Observe que está asignando un valor con =, como:
+orm_mode = True
+No usa : como para las declaraciones de tipos anteriores.
+Esto es establecer un valor de configuración, no declarar un tipo.
+
+El orm_mode de Pydantic le indicará al modelo de Pydantic que lea los datos incluso si no es un dict, sino un modelo ORM (o cualquier otro objeto arbitrario con atributos).
+De esta manera, en lugar de solo tratar de obtener el valor de identificación de un dictado, como en:
+```
+id = data["id"]
+```
+
+también intentará obtenerlo de un atributo, como en:
+```
+id = data.id
+```
+
+Y con esto, el modelo de Pydantic es compatible con los ORM, y puede simplemente declararlo en el argumento del modelo de respuesta en sus operaciones de ruta.
+Podrá devolver un modelo de base de datos y leerá los datos de él.
+
+### Detalles técnicos sobre el modo ORM
+SQLAlchemy y muchos otros son por defecto "carga diferida".
+Eso significa, por ejemplo, que no obtienen los datos de las relaciones de la base de datos a menos que intente acceder al atributo que contendría esos datos.
+Por ejemplo, accediendo a los elementos de atributos:
+```
+current_user.items
+```
+
+haría que SQLAlchemy vaya a la tabla de elementos y obtenga los elementos para este usuario, pero no antes.
+Sin orm_mode, si devolviera un modelo SQLAlchemy de su operación de ruta, no incluiría los datos de la relación.
+Incluso si declaró esas relaciones en sus modelos Pydantic.
+Pero con el modo ORM, como el propio Pydantic intentará acceder a los datos que necesita de los atributos (en lugar de asumir un dict), puede declarar los datos específicos que desea devolver y podrá ir a buscarlos, incluso desde ORM. .
+
+
+
 # new
