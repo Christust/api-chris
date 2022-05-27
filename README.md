@@ -4506,7 +4506,6 @@ from .database import Base
 
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
@@ -4666,6 +4665,202 @@ haría que SQLAlchemy vaya a la tabla de elementos y obtenga los elementos para 
 Sin orm_mode, si devolviera un modelo SQLAlchemy de su operación de ruta, no incluiría los datos de la relación.
 Incluso si declaró esas relaciones en sus modelos Pydantic.
 Pero con el modo ORM, como el propio Pydantic intentará acceder a los datos que necesita de los atributos (en lugar de asumir un dict), puede declarar los datos específicos que desea devolver y podrá ir a buscarlos, incluso desde ORM. .
+
+## CRUD utils
+Ahora veamos el archivo sql_app/crud.py.
+En este archivo tendremos funciones reutilizables para interactuar con los datos de la base de datos.
+CRUD proviene de: Crear, Leer, Actualizar y Eliminar.
+...aunque en este ejemplo solo estamos creando y leyendo.
+
+### Read data
+Importe la sesión desde sqlalchemy.orm, esto le permitirá declarar el tipo de los parámetros de la base de datos y tener mejores verificaciones de tipo y finalización en sus funciones.
+
+Importe modelos (los modelos de SQLAlchemy) y esquemas (los modelos/esquemas de Pydantic).
+
+Crear funciones de utilidad para:
+
+- Leer un solo usuario por ID y por correo electrónico.
+- Leer varios usuarios.
+- Leer varios elementos.
+```
+from sqlalchemy.orm import Session
+from . import models, schemas
+
+def get_user(db: Session, user_id: int):
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
+
+def get_users(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.User).offset(skip).limit(limit).all()
+
+def create_user(db: Session, user: schemas.UserCreate):
+    fake_hashed_password = user.password + "hashed"
+    db_user = models.User(email=user.email, hashed_password=fake_hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+def get_items(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Item).offset(skip).limit(limit).all()
+
+def create_user_item(db: Session, item: schemas.ItemCreate, user_id: int):
+    db_item = models.Item(**item.dict(), owner_id=user_id)
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+```
+
+### Create data
+Ahora cree funciones de utilidad para crear datos.
+
+Los pasos son:
+
+- Cree una instancia de modelo de SQLAlchemy con sus datos.
+- agregue ese objeto de instancia a su sesión de base de datos.
+- confirmar los cambios en la base de datos (para que se guarden).
+- actualice su instancia (para que contenga cualquier dato nuevo de la base de datos, como la ID generada).
+
+## Main FastAPI app
+Y ahora, en el archivo sql_app/main.py, integremos y usemos todas las otras partes que creamos antes.
+
+## Crear las tablas de la base de datos
+De una manera muy simple crea las tablas de la base de datos:
+```
+from typing import List
+
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.orm import Session
+
+from . import crud, models, schemas
+from .database import SessionLocal, engine
+
+models.Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
+
+
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@app.post("/users/", response_model=schemas.User)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return crud.create_user(db=db, user=user)
+
+
+@app.get("/users/", response_model=List[schemas.User])
+def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    users = crud.get_users(db, skip=skip, limit=limit)
+    return users
+
+
+@app.get("/users/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+
+@app.post("/users/{user_id}/items/", response_model=schemas.Item)
+def create_item_for_user(
+    user_id: int, item: schemas.ItemCreate, db: Session = Depends(get_db)
+):
+    return crud.create_user_item(db=db, item=item, user_id=user_id)
+
+
+@app.get("/items/", response_model=List[schemas.Item])
+def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    items = crud.get_items(db, skip=skip, limit=limit)
+    return items
+```
+
+## Alembic Nota
+Normalmente, probablemente inicializaría su base de datos (crear tablas, etc.) con Alembic.
+Y también usaría Alembic para "migraciones" (ese es su trabajo principal).
+Una "migración" es el conjunto de pasos necesarios cada vez que cambia la estructura de sus modelos SQLAlchemy, agrega un nuevo atributo, etc. para replicar esos cambios en la base de datos, agrega una nueva columna, una nueva tabla, etc.
+Puede encontrar un ejemplo de Alambique en un proyecto FastAPI en las plantillas de Generación de proyectos - Plantilla. Concretamente en el directorio del alambique en el código fuente.
+
+## Crear una dependencia
+Ahora use la clase SessionLocal que creamos en el archivo sql_app/database.py para crear una dependencia.
+Necesitamos tener una sesión/conexión de base de datos independiente (SessionLocal) por solicitud, usar la misma sesión durante toda la solicitud y luego cerrarla después de que finalice la solicitud.
+Y luego se creará una nueva sesión para la próxima solicitud.
+Para ello crearemos una nueva dependencia con yield, como se explicó anteriormente en el apartado de Dependencias con yield.
+Nuestra dependencia creará un nuevo SQLAlchemy SessionLocal que se usará en una sola solicitud y luego lo cerrará una vez que finalice la solicitud.
+```
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+```
+
+Y luego, cuando usamos la dependencia en una función de operación de ruta, la declaramos con el tipo Sesión que importamos directamente desde SQLAlchemy.
+Esto nos brindará una mejor compatibilidad con el editor dentro de la función de operación de ruta, porque el editor sabrá que el parámetro db es del tipo Sesión:
+```
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+```
+
+El parámetro db es en realidad del tipo SessionLocal, pero esta clase (creada con sessionmaker()) es un "proxy" de una sesión de SQLAlchemy, por lo que el editor no sabe realmente qué métodos se proporcionan.
+Pero al declarar el tipo como Sesión, el editor ahora puede conocer los métodos disponibles (.add(), .query(), .commit(), etc.) y puede brindar un mejor soporte (como finalización). La declaración de tipo no afecta al objeto real.
+
+## Cree sus operaciones de ruta FastAPI
+Ahora, finalmente, aquí está el código de operaciones de ruta FastAPI estándar.
+
+```
+@app.post("/users/", response_model=schemas.User)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return crud.create_user(db=db, user=user)
+
+
+@app.get("/users/", response_model=List[schemas.User])
+def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    users = crud.get_users(db, skip=skip, limit=limit)
+    return users
+
+
+@app.get("/users/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+
+@app.post("/users/{user_id}/items/", response_model=schemas.Item)
+def create_item_for_user(
+    user_id: int, item: schemas.ItemCreate, db: Session = Depends(get_db)
+):
+    return crud.create_user_item(db=db, item=item, user_id=user_id)
+
+
+@app.get("/items/", response_model=List[schemas.Item])
+def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    items = crud.get_items(db, skip=skip, limit=limit)
+    return items
+```
+
+Estamos creando la sesión de la base de datos antes de cada solicitud en la dependencia con rendimiento, y luego cerrándola después.
+Y luego podemos crear la dependencia requerida en la función de operación de ruta, para obtener esa sesión directamente.
+Con eso, podemos simplemente llamar a crud.get_user directamente desde dentro de la función de operación de ruta y usar esa sesión.
 
 
 

@@ -1,51 +1,53 @@
-from typing import Union
-from fastapi import Body, Depends, FastAPI, Query, Path, status
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field, Required
-from enum import Enum
-from fastapi.responses import FileResponse
-import uvicorn
+from typing import List
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.orm import Session
+import crud, models, schemas
+from database import SessionLocal, engine
+
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-class ModelName(str, Enum):
-    alexnet = "alexnet"
-    resnet = "resnet"
-    lenet = "lenet"
 
-class Item(BaseModel):
-    name: str = Field(min_length=3)
-    description: Union[str, None] = Field(default=None, min_length=3)
-    price: float = Field(gt=0)
-    tax: Union[float, None] = Field(default=None, gt=0)
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-@app.get("/")
-async def read_root(name: Union[str, None] = Query(default=None, min_length=4)):
-    if name:
-        return {"mensaje": f"Hola {name}. Atte: Christos"}
-    return {"mensaje": "Hola malditos. Atte: Christos"}
 
-@app.get("/models/{model_name}")
-async def get_models(model_name: ModelName):
-    if model_name == ModelName.alexnet:
-        return {"model_name":"Es alexnet"}
-    else:
-        if model_name.value == ModelName.resnet:
-            return {"model_name":"Es resnet"}
-        else:
-            return {"model_name":"Es lenet"}
+@app.post("/users/", response_model=schemas.User)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return crud.create_user(db=db, user=user)
 
-@app.get("/items/{item_id}")
-async def read_item(*, item_id: int = Path(..., title="ID of an item", gt=0, le=1000), q: str):
-    return {"item_id": item_id}
 
-@app.post("/items", status_code=status.HTTP_201_CREATED)
-async def post_item(item: Item):
-    if item.tax:
-        item_dict = item.dict()
-        item_dict.update({"total": item.price + item.tax})
-        return item_dict
-    return item
+@app.get("/users/", response_model=List[schemas.User])
+def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    users = crud.get_users(db, skip=skip, limit=limit)
+    return users
 
-# Descomentar para depurar
-# uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.get("/users/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+
+@app.post("/users/{user_id}/items/", response_model=schemas.Item)
+def create_item_for_user(
+    user_id: int, item: schemas.ItemCreate, db: Session = Depends(get_db)
+):
+    return crud.create_user_item(db=db, item=item, user_id=user_id)
+
+
+@app.get("/items/", response_model=List[schemas.Item])
+def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    items = crud.get_items(db, skip=skip, limit=limit)
+    return items
