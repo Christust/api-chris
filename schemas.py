@@ -25,6 +25,14 @@ class User(UserBase):
     id: int
     is_active: bool
     items: List[Item] = []
-
+    hashed_password: str
+    
     class Config:
         orm_mode = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Union[str, None] = None
